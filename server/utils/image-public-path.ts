@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { DEFAULT_FOLDER, validateImageKey } from './image-key'
+import { DEFAULT_FOLDER, validateFileKey, validateImageKey } from './image-key'
 
 /** 存储 key → 对外 URL 路径（不含域名） */
 export function storageKeyToPublicPath(key: string): string {
@@ -23,6 +23,8 @@ export function toStorageKeyFromPublicPath(publicPath: string): string | null {
   const raw = publicPath.replace(/^\/+/, '')
   if (!raw) return null
   if (validateImageKey(raw)) return raw
+  // 文件床直链保留 files/ 前缀，避免与图片路径混用
+  if (validateFileKey(raw)) return raw
   const candidate = `${DEFAULT_FOLDER}/${raw}`
   return validateImageKey(candidate) ? candidate : null
 }

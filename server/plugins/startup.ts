@@ -1,7 +1,16 @@
 import { getDataDir } from '../utils/data-dir'
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { runAutoDeleteCleanup } from '../utils/auto-delete'
 import { migrateLocalImagesToIndex, purgeOrphanImageIndexRows, reconcileLegacyImageKeys, repairLocalImageIndexMetadata } from '../utils/image-index'
 import { ensureDefaultBackends } from '../utils/storage-backends'
+import {
+  cleanupTranscodedSources,
+  killOrphanFfmpeg,
+  purgeOrphanVideoAssets,
+  resumePendingTranscodes
+} from '../utils/transcode'
 import { logException, logInfo } from '../utils/logger'
 
 export default defineNitroPlugin(() => {
@@ -17,10 +26,26 @@ export default defineNitroPlugin(() => {
 
   ensureDefaultBackends()
 
+  /** 清理上次异常退出留下的转码临时目录 */
+  void (async () => {
+    try {
+      const entries = await fs.readdir(tmpdir(), { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.startsWith('pichost-hls-')) continue
+        await fs.rm(join(tmpdir(), entry.name), { recursive: true, force: true })
+          .catch(() => {})
+      }
+    } catch {
+      // 清理失败不影响启动
+    }
+  })()
+
   void (async () => {
     const dataDir = getDataDir()
     try {
-      logInfo('开始同步图片索引：扫描本地磁盘', { path: `${dataDir}/images/` })
+      logInfo('开始同步存储索引：扫描本地磁盘', {
+        path: `${dataDir}/images/, ${dataDir}/files/, ${dataDir}/videos/`
+      })
 
       const inserted = await migrateLocalImagesToIndex()
       if (inserted > 0) {
@@ -54,6 +79,18 @@ export default defineNitroPlugin(() => {
       }
 
       logInfo('图片索引同步结束')
+
+      logInfo('开始恢复未完成的视频转码任务')
+      await killOrphanFfmpeg()
+      const purgedAssets = await purgeOrphanVideoAssets()
+      if (purgedAssets > 0) {
+        logInfo('清理无主的视频附属文件', { removed: purgedAssets })
+      }
+      const removedSources = await cleanupTranscodedSources()
+      if (removedSources > 0) {
+        logInfo('清理转码完成后的源视频', { removed: removedSources })
+      }
+      resumePendingTranscodes()
     } catch (error) {
       logException('图片索引同步失败', error)
     }

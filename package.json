@@ -51,6 +51,7 @@
     "@nuxt/ui": "^4.9.0",
     "@nuxtjs/i18n": "^10.6.0",
     "cap-widget": "^0.1.58",
+    "hls.js": "^1.7.3",
     "nuxt": "^4.4.8",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.3.1",

@@ -1,14 +1,26 @@
 import type { H3Event } from 'h3'
-import { IMAGE_CACHE_CONTROL } from './constants'
+import {
+  FILE_CACHE_CONTROL,
+  FILE_PRIVATE_CACHE_CONTROL,
+  IMAGE_CACHE_CONTROL
+} from './constants'
 import {
   getAllowedRefererHostsRaw,
+  getFileBedAccessMode,
   getImageBaseUrlConfigured,
   getSiteBaseUrlConfigured,
   hostnameFromBaseUrl,
   isRefererConfigured
 } from './env'
+import { isFileAccessAuthorized } from './access'
+import { buildAttachmentDisposition } from './file-bed'
 import { findImageKeyByDatePath, findImageKeyByFilename } from './image-index'
-import { validateImageKey } from './image-key'
+import {
+  validateFileKey,
+  validateImageKey,
+  validateStorageKey,
+  validateVideoKey
+} from './image-key'
 import { isBareImageFilename, toStorageKeyFromPublicPath } from './image-public-path'
 import { buildPublicImageUrl } from './image-response'
 import { createImageStream, headImage } from './storage'
@@ -90,7 +102,7 @@ export function requestPathToImageKey(
   const raw = decodeURIComponent(pathname).replace(/^\/+/, '')
   if (!raw) return null
 
-  if (validateImageKey(raw)) return raw
+  if (validateStorageKey(raw)) return raw
 
   // 简短链接：纯文件名须先走索引反查，不能猜成 images/文件名（与按年/月存储冲突）
   if (options?.hideFolder && isBareImageFilename(raw)) {
@@ -114,6 +126,12 @@ export function requestPathToImageKey(
 }
 
 export async function serveImageByKey(event: H3Event, key: string) {
+  const isFile = validateFileKey(key)
+  const isVideo = validateVideoKey(key)
+  // 文件与视频共用「文件床访问方式」开关
+  const isMedia = isFile || isVideo
+  const fileAccessMode = isMedia ? getFileBedAccessMode() : 'public'
+
   const referer = getHeader(event, 'referer') ?? null
   if (isHotlinkBlocked(event, referer)) {
     setHeader(event, 'Cache-Control', ERROR_CACHE_CONTROL)
@@ -123,6 +141,12 @@ export async function serveImageByKey(event: H3Event, key: string) {
     })
   }
 
+  // Token 模式：文件直链需要 Auth-Token / ?token= / 已登录会话
+  if (isMedia && fileAccessMode === 'token' && !(await isFileAccessAuthorized(event))) {
+    setHeader(event, 'Cache-Control', ERROR_CACHE_CONTROL)
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
   const stored = await headImage(key)
   if (!stored) {
     setHeader(event, 'Cache-Control', ERROR_CACHE_CONTROL)
@@ -130,7 +154,12 @@ export async function serveImageByKey(event: H3Event, key: string) {
   }
 
   const backendRow = await getBackendRowForKey(key)
-  if (backendRow.serving_mode === 'public' && backendRow.public_url) {
+  // Token 模式不做对象存储直链跳转，避免绕过鉴权
+  if (
+    fileAccessMode === 'public'
+    && backendRow.serving_mode === 'public'
+    && backendRow.public_url
+  ) {
     const publicUrl = buildPublicImageUrl(backendRow, key)
     return sendRedirect(event, publicUrl, 302)
   }
@@ -138,10 +167,26 @@ export async function serveImageByKey(event: H3Event, key: string) {
   const etag = `"${stored.size}-${Math.round(stored.mtimeMs)}"`
 
   setHeader(event, 'ETag', etag)
-  setHeader(event, 'Cache-Control', IMAGE_CACHE_CONTROL)
+  setHeader(
+    event,
+    'Cache-Control',
+    isMedia
+      ? (fileAccessMode === 'token' ? FILE_PRIVATE_CACHE_CONTROL : FILE_CACHE_CONTROL)
+      : IMAGE_CACHE_CONTROL
+  )
   setHeader(event, 'Accept-Ranges', 'bytes')
   setHeader(event, 'X-Content-Type-Options', 'nosniff')
   setHeader(event, 'Content-Type', stored.contentType)
+
+  // 文件床统一以附件形式下发，避免上传的文档在站点域名下被渲染执行
+  if (isFile) {
+    setHeader(event, 'Content-Disposition', buildAttachmentDisposition(stored.originalName))
+  }
+
+  // 视频走 inline 播放，跨域（图片域名）访问需要放行 CORS
+  if (isVideo) {
+    setHeader(event, 'Access-Control-Allow-Origin', '*')
+  }
 
   if (stored.contentType === 'image/svg+xml') {
     setHeader(

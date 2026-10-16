@@ -15,9 +15,11 @@ import {
   SETTINGS_TURNSTILE_SECRET_KEY,
   SETTINGS_CAP_API_ENDPOINT,
   SETTINGS_CAP_SECRET,
+  SETTINGS_FILE_BED_ACCESS,
   setAllowRegistration
 } from '../../utils/db'
 import {
+  parseFileBedAccessMode,
   getSettingsPayload,
   isValidImageBaseUrl,
   isValidRefererHost,
@@ -68,6 +70,7 @@ interface SettingsPatchBody {
   loginRateMax?: unknown
   loginRateWindowMinutes?: unknown
   preserveOriginalUpload?: unknown
+  fileBedAccess?: unknown
 }
 
 export default defineEventHandler(async (event) => {
@@ -331,6 +334,14 @@ export default defineEventHandler(async (event) => {
       createApiError(event, 'INVALID_REQUEST', '保留原图设置无效', 400)
     }
     setUploadPolicySettings({ preserveOriginalUpload: body.preserveOriginalUpload })
+  }
+
+  if (body.fileBedAccess !== undefined) {
+    const mode = parseFileBedAccessMode(String(body.fileBedAccess))
+    if (!mode) {
+      createApiError(event, 'INVALID_REQUEST', '文件床访问方式无效', 400)
+    }
+    setSetting(SETTINGS_FILE_BED_ACCESS, mode)
   }
 
   logActivity(event, {

@@ -18,6 +18,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# 视频床转码依赖 ffmpeg（单码率 HLS 切片）
+RUN apk add --no-cache ffmpeg
+
 ENV NODE_ENV=production \
     NITRO_PORT=6892 \
     DATA_DIR=/data

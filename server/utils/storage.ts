@@ -18,7 +18,13 @@ import {
   listImages as listImagesFromIndex,
   searchImages as searchImagesFromIndex
 } from './image-index'
-import { DEFAULT_FOLDER, toCanonicalImageKey, validateImageKey } from './image-key'
+import {
+  DEFAULT_FOLDER,
+  isVideoSidecarKey,
+  mediaTypeForKey,
+  toCanonicalImageKey,
+  validateStorageKey
+} from './image-key'
 import type { TagFilterInput } from './tags'
 import {
   getActiveBackend,
@@ -26,9 +32,11 @@ import {
 } from './storage/resolver'
 import type {
   FolderStorageStat,
+  MediaType,
   PaginatedResult,
   StoredImage,
-  StoredImageMeta
+  StoredImageMeta,
+  TranscodeStatus
 } from './storage/types'
 
 export type {
@@ -57,7 +65,7 @@ async function fileExistsAtKey(key: string): Promise<boolean> {
 export async function resolveStorageImageKey(key: string): Promise<string | null> {
   if (!key || typeof key !== 'string') return null
 
-  if (validateImageKey(key)) {
+  if (validateStorageKey(key)) {
     if (await fileExistsAtKey(key) || getImageIndexRow(key)) return key
     return null
   }
@@ -106,7 +114,8 @@ export async function putImage(
     originalName: meta.originalName,
     contentType: meta.contentType,
     size: meta.size,
-    uploadedAt: meta.uploadedAt
+    uploadedAt: meta.uploadedAt,
+    mediaType: meta.mediaType
   })
   return backend.id
 }
@@ -134,15 +143,19 @@ export async function headImage(key: string): Promise<StoredImage | null> {
     }
   }
 
-  insertImageIndex({
-    key: stored.key,
-    backendId: backend.id,
-    userId: stored.userId,
-    originalName: stored.originalName,
-    contentType: stored.contentType,
-    size: stored.size,
-    uploadedAt: stored.uploadedAt
-  })
+  // HLS 播放列表与分片不建索引，避免污染视频库
+  if (!isVideoSidecarKey(stored.key)) {
+    insertImageIndex({
+      key: stored.key,
+      backendId: backend.id,
+      userId: stored.userId,
+      originalName: stored.originalName,
+      contentType: stored.contentType,
+      size: stored.size,
+      uploadedAt: stored.uploadedAt,
+      mediaType: mediaTypeForKey(stored.key)
+    })
+  }
 
   return { ...stored, backendId: backend.id }
 }
@@ -214,6 +227,8 @@ export async function listImages(options: {
   contentType?: string
   uploadSource?: 'web' | 'api'
   tagFilter?: TagFilterInput
+  mediaType?: MediaType
+  transcodeStatuses?: TranscodeStatus[]
 }): Promise<PaginatedResult<StoredImage>> {
   return listImagesFromIndex(options)
 }
@@ -227,6 +242,8 @@ export async function searchImages(options: {
   contentType?: string
   uploadSource?: 'web' | 'api'
   tagFilter?: TagFilterInput
+  mediaType?: MediaType
+  transcodeStatuses?: TranscodeStatus[]
 }): Promise<PaginatedResult<StoredImage>> {
   return searchImagesFromIndex(options)
 }

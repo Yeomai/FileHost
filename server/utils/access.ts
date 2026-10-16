@@ -286,3 +286,21 @@ export async function getUploadUserId(
 
   return null
 }
+
+/** 文件床直链在 Token 模式下的校验：Auth-Token 头、?token= 查询参数或已登录会话 */
+export async function isFileAccessAuthorized(event: H3Event): Promise<boolean> {
+  if (devBypass(event)) return true
+  if (verifyApiUploadToken(event)) return true
+
+  const queryToken = getQuery(event).token
+  if (
+    typeof queryToken === 'string'
+    && queryToken
+    && verifyUploadTokenValue(event, queryToken)
+  ) {
+    return true
+  }
+
+  const user = await getCurrentUser(event)
+  return Boolean(user)
+}

@@ -10,6 +10,7 @@ import {
   SETTINGS_STORAGE_USE_DATE_PATH,
   SETTINGS_IMAGE_BASE_URL,
   SETTINGS_SITE_BASE_URL,
+  SETTINGS_FILE_BED_ACCESS,
   SETTINGS_WEBP_QUALITY,
   SETTINGS_LOGIN_VERIFICATION_METHOD,
   SETTINGS_TURNSTILE_SITE_KEY,
@@ -19,6 +20,21 @@ import {
   isAllowRegistration
 } from './db'
 import { getUploadPolicySettingsPayload } from './upload-policy'
+
+export type FileBedAccessMode = 'public' | 'token'
+
+export function parseFileBedAccessMode(
+  raw: string | null | undefined
+): FileBedAccessMode | null {
+  const value = raw?.trim().toLowerCase()
+  if (value === 'public' || value === 'token') return value
+  return null
+}
+
+/** 文件床直链访问方式：公开直链或需要 Token（默认公开） */
+export function getFileBedAccessMode(): FileBedAccessMode {
+  return parseFileBedAccessMode(getSetting(SETTINGS_FILE_BED_ACCESS)) ?? 'public'
+}
 
 export function getRuntimeEnv(
   event: H3Event,
@@ -688,6 +704,7 @@ export function getSettingsPayload(event: H3Event) {
     autoDeleteDays,
     autoDeleteDaysSource: getAutoDeleteDaysSource(),
     autoDeleteEnvFallback: parseAutoDeleteDays(getAutoDeleteDaysFromEnv()) ?? 0,
+    fileBedAccess: getFileBedAccessMode(),
     allowRegistration: isAllowRegistration(),
     loginVerificationMethod: getLoginVerificationMethod(event),
     turnstileSiteKey: getTurnstileSiteKeyConfigured(event),

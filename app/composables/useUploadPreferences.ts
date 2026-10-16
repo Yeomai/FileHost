@@ -1,6 +1,12 @@
 const STORAGE_KEY = 'pichost.upload-preferences'
 
 export type CopyFormat = 'url' | 'markdown' | 'html' | 'bbcode'
+export type UploadMediaKind = 'image' | 'video' | 'file'
+
+/** 每种上传页各存一份偏好，互不影响 */
+function storageKeyFor(kind: UploadMediaKind): string {
+  return kind === 'image' ? STORAGE_KEY : `${STORAGE_KEY}.${kind}`
+}
 
 export interface UploadPreferences {
   compressEnabled: boolean
@@ -8,6 +14,8 @@ export interface UploadPreferences {
   copyFormat: CopyFormat
   clientWebpQuality: number
   lastTagIds: number[]
+  /** 视频床专属：上传后转码为 HLS（m3u8 + 分片） */
+  transcodeToHls: boolean
 }
 
 const DEFAULTS: UploadPreferences = {
@@ -15,7 +23,8 @@ const DEFAULTS: UploadPreferences = {
   autoCopyMarkdown: false,
   copyFormat: 'markdown',
   clientWebpQuality: 80,
-  lastTagIds: []
+  lastTagIds: [],
+  transcodeToHls: false
 }
 
 function clampQuality(value: unknown): number {
@@ -28,11 +37,11 @@ function isCopyFormat(value: unknown): value is CopyFormat {
   return value === 'url' || value === 'markdown' || value === 'html' || value === 'bbcode'
 }
 
-function readStored(): UploadPreferences {
+function readStored(kind: UploadMediaKind): UploadPreferences {
   if (import.meta.server) return { ...DEFAULTS }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKeyFor(kind))
     if (!raw) return { ...DEFAULTS }
     const parsed = JSON.parse(raw) as Partial<UploadPreferences>
     return {
@@ -42,33 +51,36 @@ function readStored(): UploadPreferences {
       clientWebpQuality: clampQuality(parsed.clientWebpQuality),
       lastTagIds: Array.isArray(parsed.lastTagIds)
         ? parsed.lastTagIds.filter(id => Number.isInteger(id) && id > 0)
-        : DEFAULTS.lastTagIds
+        : DEFAULTS.lastTagIds,
+      transcodeToHls: parsed.transcodeToHls === true
     }
   } catch {
     return { ...DEFAULTS }
   }
 }
 
-function writeStored(prefs: UploadPreferences) {
+function writeStored(kind: UploadMediaKind, prefs: UploadPreferences) {
   if (import.meta.server) return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+  localStorage.setItem(storageKeyFor(kind), JSON.stringify(prefs))
 }
 
-export function useUploadPreferences() {
-  const compressEnabled = useState('upload-pref-compress', () => DEFAULTS.compressEnabled)
-  const autoCopyMarkdown = useState('upload-pref-auto-md', () => DEFAULTS.autoCopyMarkdown)
-  const copyFormat = useState<CopyFormat>('upload-pref-copy-format', () => DEFAULTS.copyFormat)
-  const clientWebpQuality = useState('upload-pref-webp-quality', () => DEFAULTS.clientWebpQuality)
-  const lastTagIds = useState<number[]>('upload-pref-last-tag-ids', () => DEFAULTS.lastTagIds)
-  const loaded = useState('upload-pref-loaded', () => false)
+export function useUploadPreferences(kind: UploadMediaKind = 'image') {
+  const compressEnabled = useState(`upload-pref-compress-${kind}`, () => DEFAULTS.compressEnabled)
+  const autoCopyMarkdown = useState(`upload-pref-auto-md-${kind}`, () => DEFAULTS.autoCopyMarkdown)
+  const copyFormat = useState<CopyFormat>(`upload-pref-copy-format-${kind}`, () => DEFAULTS.copyFormat)
+  const clientWebpQuality = useState(`upload-pref-webp-quality-${kind}`, () => DEFAULTS.clientWebpQuality)
+  const lastTagIds = useState<number[]>(`upload-pref-last-tag-ids-${kind}`, () => DEFAULTS.lastTagIds)
+  const transcodeToHls = useState(`upload-pref-transcode-${kind}`, () => DEFAULTS.transcodeToHls)
+  const loaded = useState(`upload-pref-loaded-${kind}`, () => false)
 
   function loadPreferences() {
-    const stored = readStored()
+    const stored = readStored(kind)
     compressEnabled.value = stored.compressEnabled
     autoCopyMarkdown.value = stored.autoCopyMarkdown
     copyFormat.value = stored.copyFormat
     clientWebpQuality.value = stored.clientWebpQuality
     lastTagIds.value = stored.lastTagIds
+    transcodeToHls.value = stored.transcodeToHls
     loaded.value = true
   }
 
@@ -77,12 +89,13 @@ export function useUploadPreferences() {
   }
 
   function savePreferences() {
-    writeStored({
+    writeStored(kind, {
       compressEnabled: compressEnabled.value,
       autoCopyMarkdown: autoCopyMarkdown.value,
       copyFormat: copyFormat.value,
       clientWebpQuality: clampQuality(clientWebpQuality.value),
-      lastTagIds: lastTagIds.value
+      lastTagIds: lastTagIds.value,
+      transcodeToHls: transcodeToHls.value
     })
   }
 
@@ -91,21 +104,27 @@ export function useUploadPreferences() {
     autoCopyMarkdown.value = DEFAULTS.autoCopyMarkdown
     copyFormat.value = DEFAULTS.copyFormat
     clientWebpQuality.value = DEFAULTS.clientWebpQuality
+    transcodeToHls.value = DEFAULTS.transcodeToHls
     savePreferences()
   }
 
-  watch([compressEnabled, autoCopyMarkdown, copyFormat, clientWebpQuality, lastTagIds], () => {
-    if (loaded.value) {
-      savePreferences()
+  watch(
+    [compressEnabled, autoCopyMarkdown, copyFormat, clientWebpQuality, lastTagIds, transcodeToHls],
+    () => {
+      if (loaded.value) {
+        savePreferences()
+      }
     }
-  })
+  )
 
   return {
+    kind,
     compressEnabled,
     autoCopyMarkdown,
     copyFormat,
     clientWebpQuality,
     lastTagIds,
+    transcodeToHls,
     loaded,
     loadPreferences,
     savePreferences,

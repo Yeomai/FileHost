@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import type { UploadMediaKind } from '~/composables/useUploadPreferences'
+
+const props = withDefaults(defineProps<{
+  /** 每个上传页各自一份偏好 */
+  kind?: UploadMediaKind
+}>(), {
+  kind: 'image'
+})
+
 const emit = defineEmits<{
   back: []
 }>()
@@ -8,8 +17,18 @@ const {
   autoCopyMarkdown,
   copyFormat,
   clientWebpQuality,
+  transcodeToHls,
   loadPreferences
-} = useUploadPreferences()
+} = useUploadPreferences(props.kind)
+
+/** 视频床 / 文件床没有图片压缩相关选项 */
+const isImageKind = computed(() => props.kind === 'image')
+const isVideoKind = computed(() => props.kind === 'video')
+const gridClass = computed(() => {
+  if (isImageKind.value) return 'sm:grid-cols-3 sm:gap-6'
+  if (isVideoKind.value) return 'sm:grid-cols-2 sm:gap-6'
+  return 'mx-auto w-full max-w-md'
+})
 
 const { t } = useI18n()
 
@@ -19,6 +38,32 @@ const {
   daysDraft: userAutoDeleteDaysDraft,
   load: loadUserSettings
 } = useUserAutoDeleteSettings()
+
+const { isAdmin } = useAuth()
+const {
+  concurrency: transcodeConcurrency,
+  threads: transcodeThreads,
+  maxConcurrency: maxTranscodeConcurrency,
+  maxThreads: maxTranscodeThreads,
+  preset: transcodePreset,
+  bitratePercent: transcodeBitratePercent,
+  minBitratePercent,
+  maxBitratePercent,
+  load: loadTranscodeSettings
+} = useTranscodeSettings()
+
+const presetItems = computed(() => [
+  { value: 'copy', label: t('preferences.presetCopy') },
+  { value: 'veryfast', label: t('preferences.presetSpeed') },
+  { value: 'medium', label: t('preferences.presetBalanced') },
+  { value: 'slow', label: t('preferences.presetQuality') },
+  { value: 'compress', label: t('preferences.presetCompress') }
+])
+
+function onBitrateInput(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value)
+  transcodeBitratePercent.value = Number.isFinite(value) ? value : 80
+}
 
 const copyFormatItems = computed(() => [
   { label: t('copy.url'), value: 'url' as const },
@@ -42,9 +87,14 @@ function onClientQualityInput(event: Event) {
   clientWebpQuality.value = Number.isFinite(value) ? value : 80
 }
 
+function selectPreset(value: string) {
+  transcodePreset.value = value
+}
+
 onMounted(() => {
   loadPreferences()
   void loadUserSettings()
+  void loadTranscodeSettings()
 })
 </script>
 
@@ -78,8 +128,14 @@ onMounted(() => {
     </div>
 
     <div class="flex flex-1 flex-col justify-center p-5 sm:p-6">
-      <div class="grid gap-5 sm:grid-cols-3 sm:gap-6">
-        <div class="space-y-4">
+      <div
+        class="grid gap-5"
+        :class="gridClass"
+      >
+        <div
+          v-if="isImageKind"
+          class="space-y-4"
+        >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.processing') }}
           </h3>
@@ -137,7 +193,103 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="space-y-4">
+        <div
+          v-if="isVideoKind"
+          class="space-y-4"
+        >
+          <h3 class="text-sm font-semibold">
+            {{ t('preferences.videoProcessing') }}
+          </h3>
+
+          <label class="flex cursor-pointer items-start gap-2.5">
+            <UCheckbox
+              v-model="transcodeToHls"
+              class="mt-0.5"
+            />
+            <span>
+              <span class="block text-sm">{{ t('preferences.transcodeToHls') }}</span>
+              <span class="mt-1 block text-xs leading-relaxed text-muted">
+                {{ t('preferences.transcodeToHlsHint') }}
+              </span>
+            </span>
+          </label>
+
+          <div
+            v-if="transcodeToHls"
+            class="ml-7 space-y-3 border-t border-default pt-4"
+          >
+            <div class="flex items-center gap-2 text-sm">
+              <span class="shrink-0">{{ t('preferences.transcodeConcurrency') }}</span>
+              <UInput
+                v-model.number="transcodeConcurrency"
+                type="number"
+                min="1"
+                :max="maxTranscodeConcurrency"
+                size="xs"
+                class="w-16 tabular-nums"
+                :disabled="!isAdmin"
+              />
+              <span class="text-muted">{{ t('preferences.unitCount') }}</span>
+              <span class="text-xs text-muted">{{ t('preferences.concurrentHint') }}</span>
+            </div>
+
+            <div class="flex items-center gap-2 text-sm">
+              <span class="shrink-0">{{ t('preferences.transcodeThreads') }}</span>
+              <UInput
+                v-model.number="transcodeThreads"
+                type="number"
+                min="1"
+                :max="maxTranscodeThreads"
+                size="xs"
+                class="w-16 tabular-nums"
+                :disabled="!isAdmin"
+              />
+              <span class="text-muted">{{ t('preferences.unitCount') }}</span>
+              <span class="text-xs text-muted">{{ t('preferences.threadsHint') }}</span>
+            </div>
+
+            <div class="flex items-center gap-2 text-sm">
+              <span class="shrink-0">{{ t('preferences.transcodeQuality') }}</span>
+              <div class="flex gap-1 rounded-lg border border-default p-0.5">
+                <UButton
+                  v-for="item in presetItems"
+                  :key="item.value"
+                  size="xs"
+                  class="flex-1 justify-center"
+                  :variant="transcodePreset === item.value ? 'solid' : 'ghost'"
+                  :color="transcodePreset === item.value ? 'primary' : 'neutral'"
+                  :label="item.label"
+                  :disabled="!isAdmin"
+                  @click="selectPreset(item.value)"
+                />
+              </div>
+            </div>
+
+            <div
+              class="flex items-center gap-2 text-sm"
+              :class="transcodePreset === 'compress' ? '' : 'opacity-40'"
+            >
+              <span class="shrink-0">{{ t('preferences.compressBitrate') }}</span>
+              <input
+                type="range"
+                :min="minBitratePercent"
+                :max="maxBitratePercent"
+                :value="transcodeBitratePercent"
+                :disabled="!isAdmin || transcodePreset !== 'compress'"
+                class="h-2 min-w-24 flex-1 cursor-pointer appearance-none rounded-full bg-default accent-primary disabled:opacity-40"
+                @input="onBitrateInput"
+              >
+              <span class="w-12 shrink-0 text-right tabular-nums text-muted">
+                {{ transcodeBitratePercent }}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="isImageKind"
+          class="space-y-4"
+        >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.webpQuality') }}
           </h3>

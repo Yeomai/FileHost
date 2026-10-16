@@ -61,6 +61,7 @@ interface SettingsResponse {
   loginRateWindowMinutesSource: PolicySource
   preserveOriginalUpload: boolean
   preserveOriginalUploadSource: PolicySource
+  fileBedAccess: 'public' | 'token'
   mimeTypeOptions: ReadonlyArray<{ mime: MimeType, label: string }>
 }
 
@@ -171,6 +172,20 @@ const uploadRateWindowMinutesDraft = ref(15)
 const loginRateMaxDraft = ref(10)
 const loginRateWindowMinutesDraft = ref(15)
 const preserveOriginalUploadDraft = ref(false)
+const fileBedAccessDraft = ref<'public' | 'token'>('public')
+
+const fileBedAccessOptions = computed(() => [
+  {
+    value: 'public',
+    label: t('settings.fileBedPublic'),
+    description: t('settings.fileBedPublicHint')
+  },
+  {
+    value: 'token',
+    label: t('settings.fileBedToken'),
+    description: t('settings.fileBedTokenHint')
+  }
+])
 
 interface ReleaseCheckResponse {
   currentVersion: string
@@ -207,6 +222,7 @@ const hasServerChanges = computed(() => {
     || loginRateMaxDraft.value !== settings.value.loginRateMax
     || loginRateWindowMinutesDraft.value !== settings.value.loginRateWindowMinutes
     || preserveOriginalUploadDraft.value !== settings.value.preserveOriginalUpload
+    || fileBedAccessDraft.value !== settings.value.fileBedAccess
 })
 
 const domainSeparationWouldActivate = computed(() =>
@@ -270,6 +286,7 @@ function applySettings(data: SettingsResponse) {
   loginRateMaxDraft.value = data.loginRateMax
   loginRateWindowMinutesDraft.value = data.loginRateWindowMinutes
   preserveOriginalUploadDraft.value = data.preserveOriginalUpload
+  fileBedAccessDraft.value = data.fileBedAccess
 }
 
 async function patchSettings(body: Record<string, unknown>) {
@@ -370,7 +387,8 @@ async function performSaveServerSettings() {
       uploadRateWindowMinutes: uploadRateWindowMinutesDraft.value,
       loginRateMax: loginRateMaxDraft.value,
       loginRateWindowMinutes: loginRateWindowMinutesDraft.value,
-      preserveOriginalUpload: preserveOriginalUploadDraft.value
+      preserveOriginalUpload: preserveOriginalUploadDraft.value,
+      fileBedAccess: fileBedAccessDraft.value
     })
     toast.add({ title: t('settings.saved'), color: 'success' })
   } catch (error: unknown) {
@@ -922,6 +940,18 @@ watch(isAdmin, () => {
                       </div>
                     </div>
                   </SettingsPlainSection>
+
+                  <SettingsSection
+                    :title="t('settings.fileBed')"
+                    :hint="t('settings.fileBedHint')"
+                  >
+                    <SettingsGroup>
+                      <SettingsRadioGroup
+                        v-model="fileBedAccessDraft"
+                        :items="fileBedAccessOptions"
+                      />
+                    </SettingsGroup>
+                  </SettingsSection>
 
                   <SettingsSection
                     :title="t('settings.loginVerification')"

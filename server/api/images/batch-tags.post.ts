@@ -4,7 +4,7 @@ import { getCurrentUser } from '../../utils/auth'
 import { createApiError } from '../../utils/api-error'
 import { MAX_DELETE_BATCH } from '../../utils/constants'
 import { getImageIndexRow } from '../../utils/image-index'
-import { toCanonicalImageKey, validateImageKey } from '../../utils/image-key'
+import { toCanonicalImageKey, validateStorageKey } from '../../utils/image-key'
 import {
   addTagsToImage,
   removeTagFromImage
@@ -20,7 +20,7 @@ interface BatchTagsBody {
 function validateKeys(keys: string[]): void {
   for (const key of keys) {
     if (
-      !validateImageKey(key)
+      !validateStorageKey(key)
       && !toCanonicalImageKey(key)
       && !getImageIndexRow(key)
     ) {

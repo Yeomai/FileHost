@@ -88,6 +88,150 @@ function migrateStorageBackendTelegramType(database: DatabaseSync): void {
   }
 }
 
+const STORAGE_SCHEMA_MEDIA_TYPE_KEY = 'storage_schema_media_type'
+const STORAGE_SCHEMA_TRANSCODE_KEY = 'storage_schema_transcode'
+const STORAGE_SCHEMA_TRANSCODE_PROGRESS_KEY = 'storage_schema_transcode_progress'
+const STORAGE_SCHEMA_THUMB_KEY = 'storage_schema_thumb'
+const STORAGE_SCHEMA_SOURCE_DELETED_KEY = 'storage_schema_source_deleted'
+const STORAGE_SCHEMA_TRANSCODE_PRESET_KEY = 'storage_schema_transcode_preset'
+
+/** images 表新增 media_type 列（区分图床图片与文件床文件） */
+function migrateImagesMediaType(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_MEDIA_TYPE_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'media_type')) {
+    database.exec(`
+      ALTER TABLE images ADD COLUMN media_type TEXT NOT NULL DEFAULT 'image'
+    `)
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_MEDIA_TYPE_KEY, new Date().toISOString())
+}
+
+/** images 表新增 HLS 转码相关列（hls_key / transcode_status） */
+function migrateImagesTranscode(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_TRANSCODE_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'hls_key')) {
+    database.exec('ALTER TABLE images ADD COLUMN hls_key TEXT')
+  }
+  if (!columns.some(column => column.name === 'transcode_status')) {
+    database.exec(`
+      ALTER TABLE images ADD COLUMN transcode_status TEXT NOT NULL DEFAULT 'none'
+    `)
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_TRANSCODE_KEY, new Date().toISOString())
+}
+
+/** images 表新增转码进度列（0–100） */
+function migrateImagesTranscodeProgress(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_TRANSCODE_PROGRESS_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'transcode_progress')) {
+    database.exec(`
+      ALTER TABLE images ADD COLUMN transcode_progress INTEGER NOT NULL DEFAULT 0
+    `)
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_TRANSCODE_PROGRESS_KEY, new Date().toISOString())
+}
+
+/** images 表新增视频缩略图列 */
+function migrateImagesThumb(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_THUMB_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'thumb_key')) {
+    database.exec('ALTER TABLE images ADD COLUMN thumb_key TEXT')
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_THUMB_KEY, new Date().toISOString())
+}
+
+/** images 表新增「源视频已删除」标记 */
+function migrateImagesSourceDeleted(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_SOURCE_DELETED_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'source_deleted')) {
+    database.exec(`
+      ALTER TABLE images ADD COLUMN source_deleted INTEGER NOT NULL DEFAULT 0
+    `)
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_SOURCE_DELETED_KEY, new Date().toISOString())
+}
+
+/** images 表新增「本视频使用的转码档位」列 */
+function migrateImagesTranscodePreset(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_TRANSCODE_PRESET_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'transcode_preset')) {
+    database.exec('ALTER TABLE images ADD COLUMN transcode_preset TEXT')
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_TRANSCODE_PRESET_KEY, new Date().toISOString())
+}
+
 function migrateStorageTables(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS storage_backends (
@@ -112,6 +256,13 @@ function migrateStorageTables(database: DatabaseSync): void {
       content_type TEXT NOT NULL,
       size INTEGER NOT NULL,
       uploaded_at TEXT NOT NULL,
+      media_type TEXT NOT NULL DEFAULT 'image',
+      hls_key TEXT,
+      transcode_status TEXT NOT NULL DEFAULT 'none',
+      transcode_progress INTEGER NOT NULL DEFAULT 0,
+      thumb_key TEXT,
+      source_deleted INTEGER NOT NULL DEFAULT 0,
+      transcode_preset TEXT,
       FOREIGN KEY (backend_id) REFERENCES storage_backends(id)
     );
     CREATE INDEX IF NOT EXISTS idx_images_uploaded_at ON images(uploaded_at DESC);
@@ -127,6 +278,15 @@ function migrateStorageTables(database: DatabaseSync): void {
     );
   `)
   migrateStorageBackendTelegramType(database)
+  migrateImagesMediaType(database)
+  migrateImagesTranscode(database)
+  migrateImagesTranscodeProgress(database)
+  migrateImagesThumb(database)
+  migrateImagesSourceDeleted(database)
+  migrateImagesTranscodePreset(database)
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_images_media_type ON images(media_type);
+  `)
 }
 
 export function ensureStorageSchema(): void {

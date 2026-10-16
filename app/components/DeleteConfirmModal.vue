@@ -1,9 +1,15 @@
 <script setup lang="ts">
+import type { MediaType } from '~/types/media'
+
 const props = defineProps<{
   open: boolean
   count: number
   loading?: boolean
+  /** 删除对象的类型，决定确认文案 */
+  kind?: MediaType
 }>()
+
+const kind = computed<MediaType>(() => props.kind ?? 'image')
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -12,7 +18,16 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const description = computed(() => t('delete.confirmDesc', { count: props.count }))
+const description = computed(() => {
+  switch (kind.value) {
+    case 'video':
+      return t('delete.confirmDescVideo', { count: props.count })
+    case 'file':
+      return t('delete.confirmDescFile', { count: props.count })
+    default:
+      return t('delete.confirmDesc', { count: props.count })
+  }
+})
 
 function close() {
   emit('update:open', false)

@@ -3,7 +3,7 @@ import type { ReadStream } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { contentTypeFromKey } from '../content-type'
 import { getDataDir } from '../data-dir'
-import { validateImageKey } from '../image-key'
+import { validateStorageKey } from '../image-key'
 import type { StoredImage, StoredImageMeta, StorageBackend } from './types'
 
 const META_SUFFIX = '.meta.json'
@@ -44,7 +44,7 @@ export class LocalStorageBackend implements StorageBackend {
   }
 
   async head(key: string): Promise<StoredImage | null> {
-    if (!validateImageKey(key)) return null
+    if (!validateStorageKey(key)) return null
 
     let stat
     try {

@@ -6,12 +6,29 @@ export interface StoredImageMeta {
   contentType: string
   size: number
   userId?: number | null
+  /** 索引表中的资源类型：图片或文件床文件 */
+  mediaType?: MediaType
 }
+
+export type MediaType = 'image' | 'video' | 'file'
+
+export type TranscodeStatus = 'none' | 'pending' | 'running' | 'done' | 'failed'
 
 export interface StoredImage extends StoredImageMeta {
   key: string
   mtimeMs: number
   backendId?: string
+  /** HLS 播放列表 key（转码完成后有值） */
+  hlsKey?: string | null
+  transcodeStatus?: TranscodeStatus
+  /** 转码进度 0–100 */
+  transcodeProgress?: number
+  /** 本视频使用的转码档位 */
+  transcodePreset?: string | null
+  /** 视频封面缩略图 key */
+  thumbKey?: string | null
+  /** 转码成功后源视频是否已删除 */
+  sourceDeleted?: boolean
 }
 
 export interface PaginatedResult<T> {

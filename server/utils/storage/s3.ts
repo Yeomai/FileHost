@@ -7,7 +7,7 @@ import {
   S3Client
 } from '@aws-sdk/client-s3'
 import type { Readable } from 'node:stream'
-import { validateImageKey } from '../image-key'
+import { validateStorageKey } from '../image-key'
 import type {
   S3BackendConfig,
   S3BackendSecrets,
@@ -133,7 +133,7 @@ export class S3StorageBackend implements StorageBackend {
   }
 
   async head(key: string): Promise<StoredImage | null> {
-    if (!validateImageKey(key)) return null
+    if (!validateStorageKey(key)) return null
 
     try {
       const response = await this.client.send(new HeadObjectCommand({

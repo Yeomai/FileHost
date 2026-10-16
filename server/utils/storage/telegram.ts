@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream'
 import { getImageIndexAsStored } from '../image-index'
-import { validateImageKey } from '../image-key'
+import { validateStorageKey } from '../image-key'
 import { logException } from '../logger'
 import {
   deleteStorageObjectRef,
@@ -338,7 +338,7 @@ export class TelegramStorageBackend implements StorageBackend {
   }
 
   async put(key: string, bytes: Uint8Array, _meta: StoredImageMeta): Promise<void> {
-    if (!validateImageKey(key)) {
+    if (!validateStorageKey(key)) {
       throw new Error('Invalid image key')
     }
     if (bytes.byteLength > TELEGRAM_MAX_FILE_BYTES) {
@@ -393,7 +393,7 @@ export class TelegramStorageBackend implements StorageBackend {
   }
 
   async head(key: string): Promise<StoredImage | null> {
-    if (!validateImageKey(key)) return null
+    if (!validateStorageKey(key)) return null
 
     const indexed = getImageIndexAsStored(key)
     if (!indexed || indexed.backendId !== this.id) {

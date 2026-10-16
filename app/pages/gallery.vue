@@ -51,8 +51,7 @@ const {
   activeTagMode,
   activeUntaggedOnly,
   setActiveTagFilter,
-  toggleTagFilter,
-  listQueryParams
+  toggleTagFilter
 } = useImageList()
 
 const { items: tagItems, fetchTags, batchUpdateTags } = useTags()
@@ -73,7 +72,7 @@ const batchDeleting = ref(false)
 const showScrollTop = ref(false)
 const previewOpen = ref(false)
 const previewImage = ref<ImageItem | null>(null)
-const viewMode = ref<'grid' | 'list'>('grid')
+const { viewMode } = useLibraryView('image')
 const batchTagOpen = ref(false)
 
 const currentUploadSource = ref('all')
@@ -104,9 +103,9 @@ function scrollToTop() {
 }
 
 async function fetchStats() {
-  stats.value = await $fetch<StatsResponse>('/api/stats', {
+  stats.value = await $fetch<StatsResponse>('/api/library/stats', {
     credentials: 'include',
-    query: listQueryParams()
+    query: { kind: 'image' }
   })
 }
 
@@ -466,7 +465,8 @@ watch(isAuthenticated, async (authed, prev) => {
         />
       </div>
 
-      <GalleryStatsOverview
+      <LibraryStatsPanel
+        kind="image"
         :stats="stats"
         :loading="statsLoading"
       />
