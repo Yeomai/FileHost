@@ -1,8 +1,9 @@
 import { createWriteStream, promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import * as tar from 'tar'
 import { getImageTotals, listAllImageIndexRows } from '../image-index'
+import type { ImageIndexRow } from '../image-index'
 import {
   listStorageBackendRows
 } from '../storage-backends'
@@ -45,6 +46,41 @@ function buildStorageBackendsMeta(): StorageBackendMetaExport[] {
 async function writeStreamToFile(stream: NodeJS.ReadableStream, filePath: string): Promise<void> {
   await fs.mkdir(join(filePath, '..'), { recursive: true })
   await pipeline(stream, createWriteStream(filePath))
+}
+
+async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk as Uint8Array))
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+/**
+ * 源文件已按设计删除（转码完成）时，导出 HLS 播放列表、分片与封面。
+ * 恢复端会遍历 blobs 目录原样还原，因此这里只需把附属文件写进去。
+ */
+async function exportVideoSidecars(row: ImageIndexRow, stagingRoot: string): Promise<void> {
+  const keys: string[] = []
+  if (row.thumb_key) keys.push(row.thumb_key)
+
+  if (row.hls_key) {
+    keys.push(row.hls_key)
+    const dir = row.hls_key.slice(0, row.hls_key.lastIndexOf('/'))
+    const text = await streamToString(await createImageStream(row.hls_key))
+    for (const line of text.split('\n')) {
+      const name = line.trim()
+      if (!name || name.startsWith('#')) continue
+      keys.push(`${dir}/${basename(name)}`)
+    }
+  }
+
+  for (const key of keys) {
+    await writeStreamToFile(
+      await createImageStream(key),
+      join(stagingRoot, 'blobs', key)
+    )
+  }
 }
 
 export async function runFullExportJob(jobId: string, appVersion: string): Promise<void> {
@@ -105,9 +141,14 @@ export async function runFullExportJob(jobId: string, appVersion: string): Promi
         message: `正在导出图片 ${processed}/${totals.count + 1}…`
       })
 
-      const blobPath = join(stagingRoot, 'blobs', row.key)
-      const stream = await createImageStream(row.key)
-      await writeStreamToFile(stream, blobPath)
+      if (Number(row.source_deleted ?? 0) === 1) {
+        // 转码完成的视频只有 HLS 产物与封面
+        await exportVideoSidecars(row, stagingRoot)
+      } else {
+        const blobPath = join(stagingRoot, 'blobs', row.key)
+        const stream = await createImageStream(row.key)
+        await writeStreamToFile(stream, blobPath)
+      }
       processed += 1
       updateBackupJob(jobId, { progress: processed })
     }
