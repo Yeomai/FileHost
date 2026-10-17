@@ -151,3 +151,27 @@ export async function cleanupLocalAtomicTempFiles(
   }
   return removed
 }
+
+/** Move an already-complete file into the storage tree without loading it into memory. */
+export async function putLocalFileAtomic(
+  key: string,
+  sourcePath: string
+): Promise<void> {
+  const filePath = keyToFilePath(key)
+  await fs.mkdir(dirname(filePath), { recursive: true })
+  try {
+    await fs.rename(sourcePath, filePath)
+  } catch (error) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && error.code === 'EXDEV'
+    ) {
+      await fs.copyFile(sourcePath, filePath)
+      await fs.rm(sourcePath, { force: true })
+      return
+    }
+    throw error
+  }
+}

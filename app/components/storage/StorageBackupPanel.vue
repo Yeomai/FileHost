@@ -19,6 +19,7 @@ const {
   jobsTotal,
   jobsTotalPages,
   jobsLoading,
+  showHiddenJobs,
   estimate,
   packages,
   loadingEstimate,
@@ -26,6 +27,9 @@ const {
   hasActiveJob,
   getActiveJob,
   loadJobs,
+  toggleShowHiddenJobs,
+  hideJob,
+  hideAllJobs,
   setJobsPage,
   setJobsPageSize,
   loadEstimate,
@@ -96,6 +100,14 @@ async function onRestore(input: {
 
 async function onCancel(jobId: string) {
   await cancelJob(jobId)
+}
+
+async function onHideJob(jobId: string, hidden: boolean) {
+  await hideJob(jobId, hidden)
+}
+
+async function onHideAll(hidden: boolean) {
+  await hideAllJobs(hidden)
 }
 
 async function onSync(body: {
@@ -192,11 +204,15 @@ function onViewJob(job: BackupJobItem) {
       :total="jobsTotal"
       :page-size="jobsPageSize"
       :loading="jobsLoading"
+      :show-hidden="showHiddenJobs"
       @update:page="setJobsPage"
       @update:page-size="setJobsPageSize"
       @download="onDownload"
       @retry="onRetry"
       @cancel="onCancel"
+      @hide="onHideJob"
+      @hide-all="onHideAll"
+      @toggle-hidden="toggleShowHiddenJobs"
       @view="onViewJob"
     />
   </section>

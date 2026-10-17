@@ -1,14 +1,17 @@
 import { requireAdminAuth } from '../../utils/access'
 import {
   fetchLatestGitHubRelease,
-  isVersionNewer
+  isVersionNewer,
+  resolveRuntimeAppVersion
 } from '../../utils/app-version'
 
 export default defineEventHandler(async (event) => {
   await requireAdminAuth(event)
 
   const config = useRuntimeConfig(event)
-  const currentVersion = String(config.appVersion ?? '')
+  const currentVersion = resolveRuntimeAppVersion(
+    String(config.appVersion ?? '')
+  )
   const query = getQuery(event)
   const force = query.refresh === '1' || query.refresh === 'true'
   const latest = await fetchLatestGitHubRelease(force)

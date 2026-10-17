@@ -8,6 +8,7 @@ defineProps<{
   totalPages: number
   total: number
   pageSize: number
+  showHidden: boolean
   loading?: boolean
 }>()
 
@@ -15,6 +16,9 @@ const emit = defineEmits<{
   'retry': [jobId: string]
   'download': [jobId: string]
   'cancel': [jobId: string]
+  'hide': [jobId: string, hidden: boolean]
+  'hideAll': [hidden: boolean]
+  'toggleHidden': []
   'view': [job: BackupJobItem]
   'update:page': [page: number]
   'update:pageSize': [pageSize: number]
@@ -85,6 +89,10 @@ function canView(job: BackupJobItem): boolean {
   return job.type === 'full_restore' && job.status === 'done' && Boolean(job.message)
 }
 
+function canHide(job: BackupJobItem): boolean {
+  return job.status === 'done' || job.status === 'failed' || job.hidden
+}
+
 function formatTime(value: string) {
   if (!value) return '—'
   return new Date(value).toLocaleString(locale.value, { hour12: false })
@@ -102,11 +110,33 @@ function formatTime(value: string) {
           {{ t('storage.backup.jobsSubtitle') }}
         </p>
       </div>
-      <UIcon
-        v-if="polling"
-        name="i-lucide-loader-circle"
-        class="size-4 shrink-0 animate-spin text-muted"
-      />
+      <div class="flex shrink-0 items-center gap-2">
+        <UIcon
+          v-if="polling"
+          name="i-lucide-loader-circle"
+          class="size-4 animate-spin text-muted"
+        />
+        <UButton
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :icon="showHidden ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+          :label="showHidden
+            ? t('storage.backup.hiddenJobsHide')
+            : t('storage.backup.hiddenJobsShow')"
+          @click="emit('toggleHidden')"
+        />
+        <UButton
+          size="xs"
+          variant="outline"
+          color="neutral"
+          :icon="showHidden ? 'i-lucide-rotate-ccw' : 'i-lucide-x'"
+          :label="showHidden
+            ? t('storage.backup.jobsRestoreAll')
+            : t('storage.backup.jobsHideAll')"
+          @click="emit('hideAll', !showHidden)"
+        />
+      </div>
     </header>
 
     <div
@@ -242,6 +272,17 @@ function formatTime(value: string) {
                   variant="outline"
                   color="neutral"
                   @click="emit('retry', job.id)"
+                />
+                <UButton
+                  v-if="canHide(job)"
+                  size="xs"
+                  variant="outline"
+                  :color="job.hidden ? 'neutral' : 'error'"
+                  :icon="job.hidden ? 'i-lucide-eye' : 'i-lucide-x'"
+                  :title="job.hidden
+                    ? t('storage.backup.jobUnhide')
+                    : t('storage.backup.jobHide')"
+                  @click="emit('hide', job.id, !job.hidden)"
                 />
               </div>
             </td>

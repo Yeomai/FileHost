@@ -41,6 +41,10 @@ import {
   completeSiteSyncMediaArtifacts,
   recordSiteSyncArtifact
 } from './artifacts'
+import {
+  SITE_SYNC_CHUNK_SIZE,
+  type SiteSyncChunkMetadata
+} from './chunks'
 import { toSiteSyncMediaTransferWithTags } from './manifest'
 import type {
   SiteSyncDirection,
@@ -69,7 +73,7 @@ export function registerSiteSyncToken(jobId: string, token: string): void {
 
 const SITE_SYNC_CONNECT_TIMEOUT_MS = 3 * 1000
 const SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS = 3 * 1000
-const SITE_SYNC_UPLOAD_HEADERS_TIMEOUT_MS = 10 * 60 * 1000
+const SITE_SYNC_CHUNK_RESPONSE_TIMEOUT_MS = 15 * 1000
 
 interface SiteSyncAgents {
   upload: Agent
@@ -81,7 +85,7 @@ const agents = (globalThis as typeof globalThis & {
 }).__pichostSiteSyncAgents ?? {
   upload: new Agent({
     connect: { timeout: SITE_SYNC_CONNECT_TIMEOUT_MS },
-    headersTimeout: SITE_SYNC_UPLOAD_HEADERS_TIMEOUT_MS,
+    headersTimeout: SITE_SYNC_CHUNK_RESPONSE_TIMEOUT_MS,
     bodyTimeout: SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS
   }),
   object: new Agent({
@@ -148,7 +152,7 @@ const SITE_SYNC_MAX_ATTEMPTS = 3
 export interface SiteSyncRetryStatus {
   attempt: number
   maxAttempts: number
-  phase: 'attempt' | 'countdown' | 'retry'
+  phase: 'attempt' | 'countdown' | 'active' | 'retry'
   delayMs?: number
   remainingMs?: number
   error?: Error
@@ -167,6 +171,11 @@ function formatRetryStatus(
       Math.ceil((status.remainingMs ?? 0) / 1000)
     )
     return `${step}（第 ${status.attempt}/${status.maxAttempts} 次）· 连接倒计时 ${seconds}s`
+  }
+  if (status.phase === 'active') {
+    return step.startsWith('上传对象')
+      ? `${step} · 已连接，上传中`
+      : `${step} · 连接已建立，等待响应`
   }
   if ((status.delayMs ?? 0) < 1000) {
     return `${step}第 ${status.attempt}/${status.maxAttempts} 次无响应，即将重试：${status.error?.message ?? '连接失败'}`
@@ -213,6 +222,12 @@ export async function retrySiteSyncOperation<T>(
           if (remainingMs <= 0) {
             if (countdownTimer) clearInterval(countdownTimer)
             countdownTimer = null
+            onStatus({
+              attempt,
+              maxAttempts: SITE_SYNC_MAX_ATTEMPTS,
+              phase: 'active',
+              remainingMs: 0
+            })
             return
           }
           onStatus({
@@ -385,6 +400,72 @@ export async function fetchSiteSyncJson<T>(
   )
 }
 
+async function uploadSiteSyncChunk(input: {
+  jobId: string
+  targetBaseUrl: string
+  token: string
+  metadata: SiteSyncChunkMetadata
+  index: number
+  bytes: Uint8Array
+  uploadedChunks: number
+  onProgress?: (message: string) => void
+}): Promise<{
+  received: number
+  totalChunks: number
+  complete: boolean
+}> {
+  const controller = new AbortController()
+  const jobSignal = getJobAbortSignal(input.jobId)
+  const onAbort = () => controller.abort(createJobCancelledError())
+  jobSignal.addEventListener('abort', onAbort, { once: true })
+  const timeout = setTimeout(() => {
+    controller.abort(new DOMException(
+      'Chunk upload made no progress for 15 seconds',
+      'TimeoutError'
+    ))
+  }, SITE_SYNC_CHUNK_RESPONSE_TIMEOUT_MS)
+  const startedAt = Date.now()
+  const fileName = basename(input.metadata.key)
+  const updateUploadTime = () => {
+    const seconds = Math.floor((Date.now() - startedAt) / 1000)
+    input.onProgress?.(
+      `上传对象 ${fileName} · 已连接，上传中 · 已上传 ${input.uploadedChunks}/${input.metadata.totalChunks} 块 · 等待 ${seconds}s`
+    )
+  }
+  updateUploadTime()
+  const ticker = setInterval(updateUploadTime, 1000)
+
+  try {
+    const encoded = Buffer.from(JSON.stringify(input.metadata))
+      .toString('base64url')
+    const response = await undiciFetch(
+      targetUrl(input.targetBaseUrl, '/api/site-sync/chunk'),
+      {
+        method: 'POST',
+        body: input.bytes,
+        headers: {
+          'Auth-Token': input.token,
+          'Content-Type': 'application/octet-stream',
+          'X-PicHost-Chunk-Metadata': encoded,
+          'X-PicHost-Chunk-Index': String(input.index)
+        },
+        signal: AbortSignal.any([jobSignal, controller.signal]),
+        dispatcher: agents.upload
+      }
+    )
+    if (!response.ok) throw await responseError(response)
+    return await response.json() as {
+      received: number
+      totalChunks: number
+      complete: boolean
+    }
+  } finally {
+    clearTimeout(timeout)
+    clearInterval(ticker)
+    jobSignal.removeEventListener('abort', onAbort)
+  }
+}
+
 async function uploadObject(
   jobId: string,
   options: SiteSyncOptions,
@@ -392,25 +473,107 @@ async function uploadObject(
   backend: StorageBackend,
   row: ImageIndexRow,
   ownerUsername: string | null,
-  key: string
+  key: string,
+  onProgress?: (message: string) => void
 ): Promise<void> {
   const stored = await backend.head(key)
   if (!stored) throw new Error(`源文件不存在：${key}`)
+  const isPrimary = key === row.key
+  const originalName = isPrimary ? row.original_name : basename(key)
+  const contentType = isPrimary ? row.content_type : contentTypeFromKey(key)
+  const mediaType = isPrimary
+    ? row.media_type
+    : key.startsWith('videos/')
+      ? 'video'
+      : key.startsWith('files/')
+        ? 'file'
+        : 'image'
+
+  if (stored.size > SITE_SYNC_CHUNK_SIZE) {
+    const totalChunks = Math.ceil(stored.size / SITE_SYNC_CHUNK_SIZE)
+    const metadata: SiteSyncChunkMetadata = {
+      jobId,
+      mediaKey: row.key,
+      key,
+      totalSize: stored.size,
+      totalChunks,
+      ownerUsername,
+      originalName,
+      uploadedAt: row.uploaded_at,
+      contentType,
+      mediaType,
+      conflictMode: options.conflictMode,
+      backendId: backend.id,
+      updatedAt: new Date().toISOString()
+    }
+    const status = await fetchSiteSyncJson<{
+      received: number[]
+      totalChunks: number
+    }>(
+      targetUrl(
+        options.targetBaseUrl,
+        `/api/site-sync/chunk-status?jobId=${encodeURIComponent(jobId)}&key=${encodeURIComponent(key)}`
+      ),
+      token,
+      undefined,
+      getJobAbortSignal(jobId),
+      (onStatus) => {
+        onProgress?.(
+          formatRetryStatus(`检查对象 ${basename(key)} 分块进度`, onStatus)
+        )
+      }
+    )
+    const received = new Set(status.received)
+    for (let index = 0; index < totalChunks; index++) {
+      if (received.has(index)) continue
+      throwIfJobCancellationRequested(jobId)
+      const start = index * SITE_SYNC_CHUNK_SIZE
+      const end = Math.min(stored.size, start + SITE_SYNC_CHUNK_SIZE) - 1
+      const bytes = await streamToBuffer(
+        await backend.createStream(key, { start, end }),
+        getJobAbortSignal(jobId)
+      )
+      const result = await uploadSiteSyncChunk({
+        jobId,
+        targetBaseUrl: options.targetBaseUrl,
+        token,
+        metadata,
+        index,
+        bytes,
+        uploadedChunks: received.size,
+        onProgress
+      })
+      received.add(index)
+      onProgress?.(
+        `上传对象 ${basename(key)} · 已连接，上传中 · 已上传 ${result.received}/${result.totalChunks} 块`
+      )
+    }
+    await fetchSiteSyncJsonOnce<{ success: boolean }>(
+      targetUrl(options.targetBaseUrl, '/api/site-sync/chunk-finalize'),
+      token,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, key }),
+        signal: getJobAbortSignal(jobId)
+      }
+    )
+    return
+  }
+
   const bytes = await streamToBuffer(
     await backend.createStream(key),
     getJobAbortSignal(jobId)
   )
   throwIfJobCancellationRequested(jobId)
   const form = new UndiciFormData()
-  const isPrimary = key === row.key
   form.append('jobId', jobId)
   form.append('mediaKey', row.key)
   form.append('key', key)
   form.append('conflictMode', options.conflictMode)
   form.append('ownerUsername', ownerUsername ?? '')
-  form.append('originalName', isPrimary ? row.original_name : basename(key))
+  form.append('originalName', originalName)
   form.append('uploadedAt', row.uploaded_at)
-  const contentType = isPrimary ? row.content_type : contentTypeFromKey(key)
   form.append('contentType', contentType)
   form.append(
     'file',
@@ -640,7 +803,10 @@ async function runSiteSyncPull(
         () => processBundleOnce(
           bundle,
           isRetry,
-          (value) => { step = value }
+          (value) => {
+            step = value
+            updateLiveStatus(value)
+          }
         ),
         jobSignal,
         status => updateLiveStatus(step, status)
@@ -934,7 +1100,8 @@ export async function runSiteSyncJob(
           backend,
           row,
           ownerUsername,
-          key
+          key,
+          message => setStep(message)
         )
       }
 
@@ -968,7 +1135,10 @@ export async function runSiteSyncJob(
         () => processPlanOnce(
           plan,
           isRetry,
-          (value) => { step = value }
+          (value) => {
+            step = value
+            updateLiveStatus(value)
+          }
         ),
         jobSignal,
         status => updateLiveStatus(step, status)

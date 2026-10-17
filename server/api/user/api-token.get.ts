@@ -7,6 +7,7 @@ import {
   getVideoBaseUrl,
   isHideFolderInUrl
 } from '../../utils/env'
+import { resolveRuntimeAppVersion } from '../../utils/app-version'
 
 export default defineEventHandler(async (event) => {
   const user = await requireUserAuth(event)
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
       videoBaseUrl: getVideoBaseUrl(event),
       fileBaseUrl: getFileBaseUrl(event),
       hideFolderInUrl: isHideFolderInUrl(event),
-      appVersion: config.appVersion as string
+      appVersion: resolveRuntimeAppVersion(String(config.appVersion ?? ''))
     }
   }
 })

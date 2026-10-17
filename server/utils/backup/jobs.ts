@@ -18,6 +18,7 @@ export interface BackupJob {
   error: string | null
   createdAt: string
   updatedAt: string
+  hidden: boolean
   finishedAt: string | null
 }
 
@@ -34,6 +35,7 @@ interface BackupJobRow {
   error: string | null
   created_at: string
   updated_at: string
+  hidden: number
   finished_at: string | null
 }
 
@@ -58,6 +60,7 @@ function rowToJob(row: BackupJobRow): BackupJob {
     error: row.error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    hidden: Number(row.hidden) === 1,
     finishedAt: row.finished_at
   }
 }
@@ -72,7 +75,7 @@ export function getRunningBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, updated_at, finished_at
+           output_path, error, created_at, updated_at, hidden, finished_at
     FROM backup_jobs
     WHERE status = 'running'${userId === undefined ? '' : ' AND user_id = ?'}
     LIMIT 1
@@ -84,7 +87,7 @@ export function getActiveBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, updated_at, finished_at
+           output_path, error, created_at, updated_at, hidden, finished_at
     FROM backup_jobs
     WHERE status IN ('pending', 'running')${userId === undefined ? '' : ' AND user_id = ?'}
     ORDER BY created_at DESC
@@ -128,22 +131,33 @@ export function getBackupJob(id: string, userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, updated_at, finished_at
+           output_path, error, created_at, updated_at, hidden, finished_at
     FROM backup_jobs
     WHERE id = ?${userId === undefined ? '' : ' AND user_id = ?'}
   `).get(...(userId === undefined ? [id] : [id, userId])) as BackupJobRow | undefined
   return row ? rowToJob(row) : null
 }
 
-export function listBackupJobs(limit = 20, userId?: number): BackupJob[] {
-  return listBackupJobsPage(1, limit, userId).jobs
+export function listBackupJobs(
+  limit = 20,
+  userId?: number,
+  includeHidden = false
+): BackupJob[] {
+  return listBackupJobsPage(1, limit, userId, includeHidden).jobs
 }
 
-export function countBackupJobs(userId?: number): number {
+export function countBackupJobs(
+  userId?: number,
+  includeHidden = false
+): number {
   ensureBackupSchema()
+  const where = [
+    ...(userId === undefined ? [] : ['user_id = ?']),
+    ...(includeHidden ? [] : ['hidden = 0'])
+  ]
   const row = getDb().prepare(`
     SELECT COUNT(*) AS count FROM backup_jobs
-    ${userId === undefined ? '' : 'WHERE user_id = ?'}
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
   `).get(...(userId === undefined ? [] : [userId])) as { count: number }
   return row.count
 }
@@ -151,18 +165,23 @@ export function countBackupJobs(userId?: number): number {
 export function listBackupJobsPage(
   page = 1,
   pageSize = 10,
-  userId?: number
+  userId?: number,
+  includeHidden = false
 ): { jobs: BackupJob[], total: number } {
   ensureBackupSchema()
   const limit = Math.min(50, Math.max(1, pageSize))
   const safePage = Math.max(1, page)
   const offset = (safePage - 1) * limit
-  const total = countBackupJobs(userId)
+  const total = countBackupJobs(userId, includeHidden)
+  const where = [
+    ...(userId === undefined ? [] : ['user_id = ?']),
+    ...(includeHidden ? [] : ['hidden = 0'])
+  ]
   const rows = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, updated_at, finished_at
+           output_path, error, created_at, updated_at, hidden, finished_at
     FROM backup_jobs
-    ${userId === undefined ? '' : 'WHERE user_id = ?'}
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
   `).all(...(userId === undefined ? [limit, offset] : [userId, limit, offset])) as unknown as BackupJobRow[]
@@ -173,7 +192,7 @@ export function listAllBackupJobsForUser(userId: number): BackupJob[] {
   ensureBackupSchema()
   const rows = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, updated_at, finished_at
+           output_path, error, created_at, updated_at, hidden, finished_at
     FROM backup_jobs
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -201,8 +220,8 @@ export function restoreBackupJobsAfterReplace(preserved: BackupJob[]): void {
     db.prepare('DELETE FROM backup_jobs').run()
     const insert = db.prepare(`
       INSERT INTO backup_jobs
-        (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, finished_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, hidden, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const job of preserved) {
       insert.run(
@@ -218,6 +237,7 @@ export function restoreBackupJobsAfterReplace(preserved: BackupJob[]): void {
         job.error,
         job.createdAt,
         job.updatedAt,
+        job.hidden ? 1 : 0,
         job.finishedAt
       )
     }
@@ -303,6 +323,34 @@ export function updateBackupJobPayload(
     SET payload_json = ?
     WHERE id = ?
   `).run(JSON.stringify(payload), id)
+}
+
+export function setBackupJobHidden(
+  id: string,
+  userId: number,
+  hidden: boolean
+): boolean {
+  ensureBackupSchema()
+  const result = getDb().prepare(`
+    UPDATE backup_jobs
+    SET hidden = ?
+    WHERE id = ? AND user_id = ?
+  `).run(hidden ? 1 : 0, id, userId)
+  return Number(result.changes ?? 0) > 0
+}
+
+export function setAllFinishedBackupJobsHidden(
+  userId: number,
+  hidden: boolean
+): number {
+  ensureBackupSchema()
+  const result = getDb().prepare(`
+    UPDATE backup_jobs
+    SET hidden = ?
+    WHERE user_id = ?
+      AND status IN ('done', 'failed')
+  `).run(hidden ? 1 : 0, userId)
+  return Number(result.changes ?? 0)
 }
 
 export function markJobRunning(id: string, message?: string): void {

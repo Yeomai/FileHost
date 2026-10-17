@@ -13,6 +13,7 @@ const jobsPageSize = ref(10)
 const jobsTotal = ref(0)
 const jobsTotalPages = ref(1)
 const jobsLoading = ref(false)
+const showHiddenJobs = ref(false)
 const activeJobState = ref<BackupJobItem | null>(null)
 const estimate = ref<BackupEstimate | null>(null)
 const packages = ref<BackupPackageItem[]>([])
@@ -69,7 +70,8 @@ export function useBackup() {
         credentials: 'include',
         query: {
           pageNum: jobsPage.value,
-          pageSize: jobsPageSize.value
+          pageSize: jobsPageSize.value,
+          includeHidden: showHiddenJobs.value
         }
       })
       jobs.value = data.jobs
@@ -102,6 +104,58 @@ export function useBackup() {
   async function refreshJobsFirstPage() {
     jobsPage.value = 1
     return loadJobs()
+  }
+
+  async function toggleShowHiddenJobs() {
+    showHiddenJobs.value = !showHiddenJobs.value
+    jobsPage.value = 1
+    await loadJobs()
+  }
+
+  async function hideJob(jobId: string, hidden = true) {
+    try {
+      await $fetch('/api/admin/backup/jobs/hide', {
+        method: 'POST',
+        credentials: 'include',
+        body: { jobId, hidden }
+      })
+      if (hidden) {
+        showHiddenJobs.value = false
+        jobsPage.value = 1
+      }
+      await loadJobs()
+      toast.add({
+        title: hidden
+          ? t('storage.backup.jobHidden')
+          : t('storage.backup.jobUnhidden'),
+        color: 'success'
+      })
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.hideFailed'))
+    }
+  }
+
+  async function hideAllJobs(hidden = true) {
+    try {
+      await $fetch('/api/admin/backup/jobs/hide-all', {
+        method: 'POST',
+        credentials: 'include',
+        body: { hidden }
+      })
+      if (hidden) {
+        showHiddenJobs.value = false
+      }
+      jobsPage.value = 1
+      await loadJobs()
+      toast.add({
+        title: hidden
+          ? t('storage.backup.jobsHiddenAll')
+          : t('storage.backup.jobsUnhiddenAll'),
+        color: 'success'
+      })
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.hideFailed'))
+    }
   }
 
   async function loadEstimate() {
@@ -327,6 +381,7 @@ export function useBackup() {
     jobsTotal,
     jobsTotalPages,
     jobsLoading,
+    showHiddenJobs,
     estimate,
     packages,
     loadingEstimate,
@@ -334,6 +389,9 @@ export function useBackup() {
     hasActiveJob,
     getActiveJob,
     loadJobs,
+    toggleShowHiddenJobs,
+    hideJob,
+    hideAllJobs,
     setJobsPage,
     setJobsPageSize,
     loadEstimate,

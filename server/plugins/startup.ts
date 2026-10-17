@@ -8,6 +8,7 @@ import { ensureDefaultBackends } from '../utils/storage-backends'
 import { cleanupLocalAtomicTempFiles } from '../utils/storage/local'
 import { cleanupExpiredSiteSyncArtifacts } from '../utils/site-sync/artifacts'
 import { recoverInterruptedBackupJobs } from '../utils/backup/jobs'
+import { cleanupExpiredSiteSyncChunkSessions } from '../utils/site-sync/chunks'
 import {
   cleanupTranscodedSources,
   killOrphanFfmpeg,
@@ -46,6 +47,17 @@ export default defineNitroPlugin(() => {
       }
     } catch (error) {
       logException('清理原子写入临时文件失败', error)
+    }
+  })()
+
+  void (async () => {
+    try {
+      const removed = await cleanupExpiredSiteSyncChunkSessions()
+      if (removed > 0) {
+        logInfo('清理过期站点同步分块', { removed })
+      }
+    } catch (error) {
+      logException('清理站点同步分块失败', error)
     }
   })()
 

@@ -26,6 +26,7 @@ import {
   isAllowRegistration
 } from './db'
 import { getUploadPolicySettingsPayload } from './upload-policy'
+import { resolveRuntimeAppVersion } from './app-version'
 
 export type FileBedAccessMode = 'public' | 'token'
 
@@ -806,7 +807,7 @@ export function getSettingsPayload(event: H3Event) {
   const effectiveVideoBaseUrl = getVideoBaseUrl(event)
   const effectiveFileBaseUrl = getFileBaseUrl(event)
   const autoDeleteDays = getAutoDeleteDays(event)
-  const appVersion = config.appVersion as string
+  const appVersion = resolveRuntimeAppVersion(String(config.appVersion ?? ''))
   const domainSeparation = isDomainSeparationActive(event)
   const hideFolderInUrl = isHideFolderInUrl(event)
   const hideFolderInUrlSource = getHideFolderInUrlSource()

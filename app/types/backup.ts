@@ -16,6 +16,7 @@ export interface BackupJobItem {
   error: string | null
   createdAt: string
   updatedAt: string
+  hidden: boolean
   finishedAt: string | null
 }
 

@@ -27,6 +27,7 @@ export function serializeBackupJob(job: BackupJob) {
     error: job.error,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    hidden: job.hidden,
     finishedAt: job.finishedAt
   }
 }

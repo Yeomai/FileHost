@@ -25,11 +25,12 @@ function migrateBackupJobTypes(): void {
       error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      hidden INTEGER NOT NULL DEFAULT 0,
       finished_at TEXT
     );
     INSERT INTO backup_jobs_new
-      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, finished_at)
-    SELECT id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, COALESCE(updated_at, created_at), finished_at
+      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, hidden, finished_at)
+    SELECT id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, COALESCE(updated_at, created_at), hidden, finished_at
     FROM backup_jobs;
     DROP TABLE backup_jobs;
     ALTER TABLE backup_jobs_new RENAME TO backup_jobs;
@@ -55,6 +56,7 @@ export function ensureBackupSchema(): void {
       error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      hidden INTEGER NOT NULL DEFAULT 0,
       finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_backup_jobs_created_at
@@ -69,6 +71,9 @@ export function ensureBackupSchema(): void {
   }
   if (!columns.some(column => column.name === 'updated_at')) {
     getDb().exec('ALTER TABLE backup_jobs ADD COLUMN updated_at TEXT')
+  }
+  if (!columns.some(column => column.name === 'hidden')) {
+    getDb().exec('ALTER TABLE backup_jobs ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
   }
   getDb().exec(`
     CREATE INDEX IF NOT EXISTS idx_backup_jobs_user_created
