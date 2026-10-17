@@ -4,6 +4,28 @@ Version history and notable changes. The full log is also in the repo root [CHAN
 
 ---
 
+## [1.5.0] — 2026-10-17
+
+### Added
+
+- Search and batch deletion for the image, video, and file libraries
+- Unified upload policy for all media with configurable size, format, and rate limits
+- Default storage backend selection for newly uploaded images, videos, and files
+- High-risk storage clearing with typed confirmation, scoped to the current user
+- Low-memory warning when enabling HLS transcoding
+
+### Improved
+
+- Backup and restore progress now reports media records and storage objects separately
+- Video uploads are limited to complete container formats with server-side validation
+- Thumbnail FFmpeg processing is single-threaded and protected by a timeout
+- Temporary m3u8-to-MP4 files are cleaned after download, on expiry, and during startup
+
+### Fixed
+
+- Stale recent tasks after clearing storage and media logic that only covered images
+- Recovery fallback for interrupted site synchronization
+
 ## [1.4.4] — 2026-10-10
 
 ### Fixed
