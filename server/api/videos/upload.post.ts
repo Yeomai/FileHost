@@ -17,6 +17,11 @@ import {
   parseTranscodePreset
 } from '../../utils/transcode'
 import { getFileBedAccessMode } from '../../utils/env'
+import { readMultipartFormFieldValues } from '../../utils/multipart-form'
+import {
+  parseTagNamesParam,
+  resolveUploadTagIds
+} from '../../utils/tags'
 
 export default defineEventHandler(async (event) => {
   await requireUploadAuth(event)
@@ -34,6 +39,15 @@ export default defineEventHandler(async (event) => {
 
   const source = verifyApiUploadToken(event) ? 'api' : 'web'
   const uploadUserId = await getUploadUserId(event, formToken)
+  const tagNamesRaw = readMultipartFormFieldValues(formData, 'tagNames')
+  const uploadTagNames = parseTagNamesParam(
+    tagNamesRaw.length === 1 ? tagNamesRaw[0] : tagNamesRaw
+  )
+  const resolvedTags = resolveUploadTagIds(uploadUserId, uploadTagNames)
+  if ('message' in resolvedTags) {
+    createApiError(event, 'INVALID_REQUEST', resolvedTags.message, 400)
+  }
+  const uploadTagIds = resolvedTags.tagIds
 
   const transcodeField = formData.find(part => part.name === 'transcode')
   const wantTranscode = transcodeField?.data?.length
@@ -98,7 +112,8 @@ export default defineEventHandler(async (event) => {
       filename: part.filename,
       contentType: part.type,
       source,
-      userId: uploadUserId
+      userId: uploadUserId,
+      tagIds: uploadTagIds
     })
 
     if ('error' in result) {

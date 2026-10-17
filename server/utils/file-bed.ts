@@ -25,6 +25,10 @@ import {
   isForbiddenFileExtension,
   isVideoExtensionAllowed
 } from './upload-policy'
+import {
+  attachTagsAfterUpload,
+  getTagsForImageKeys
+} from './tags'
 
 export { isForbiddenFileExtension }
 
@@ -107,6 +111,7 @@ export async function processSingleFileUpload(
     contentType?: string
     source?: LogSource
     userId?: number | null
+    tagIds?: number[]
   }
 ): Promise<{ item: FileItem } | { error: UploadErrorItem }> {
   const originalName = sanitizeDownloadName(input.filename ?? 'file')
@@ -157,7 +162,8 @@ export async function processSingleFileUpload(
     contentType: normalizeFileContentType(input.contentType, extension),
     source: input.source,
     userId: input.userId,
-    mediaType: 'file'
+    mediaType: 'file',
+    tagIds: input.tagIds
   })
 }
 
@@ -173,6 +179,7 @@ async function persistMediaUpload(
     source?: LogSource
     userId?: number | null
     mediaType: MediaType
+    tagIds?: number[]
   }
 ): Promise<{ item: FileItem } | { error: UploadErrorItem }> {
   let backendId: string
@@ -222,16 +229,22 @@ async function persistMediaUpload(
     source: input.source ?? 'web'
   })
 
+  if (input.tagIds?.length && input.userId != null) {
+    attachTagsAfterUpload(input.key, input.tagIds, input.userId)
+  }
+
+  const item = buildFileItem({
+    event,
+    key: input.key,
+    backendId,
+    originalName: input.originalName,
+    contentType: input.contentType,
+    size: input.bytes.byteLength,
+    uploadedAt: input.uploadedAt
+  })
+  const tags = getTagsForImageKeys([input.key]).get(input.key) ?? []
   return {
-    item: buildFileItem({
-      event,
-      key: input.key,
-      backendId,
-      originalName: input.originalName,
-      contentType: input.contentType,
-      size: input.bytes.byteLength,
-      uploadedAt: input.uploadedAt
-    })
+    item: tags.length ? { ...item, tags } : item
   }
 }
 
@@ -243,6 +256,7 @@ export async function processSingleVideoUpload(
     contentType?: string
     source?: LogSource
     userId?: number | null
+    tagIds?: number[]
   }
 ): Promise<{ item: FileItem } | { error: UploadErrorItem }> {
   const originalName = sanitizeDownloadName(input.filename ?? 'video')
@@ -293,7 +307,8 @@ export async function processSingleVideoUpload(
     contentType: normalizeVideoContentType(input.contentType, extension),
     source: input.source,
     userId: input.userId,
-    mediaType: 'video'
+    mediaType: 'video',
+    tagIds: input.tagIds
   })
 
   // 生成封面缩略图；失败不影响上传结果

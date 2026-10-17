@@ -17,9 +17,11 @@ const {
   autoCopyMarkdown,
   copyFormat,
   clientWebpQuality,
+  lastTagIds,
   transcodeToHls,
   loadPreferences
 } = useUploadPreferences(props.kind)
+const { items: tagItems, fetchTags } = useTags()
 
 /** 视频床 / 文件床没有图片压缩相关选项 */
 const isImageKind = computed(() => props.kind === 'image')
@@ -76,6 +78,7 @@ onMounted(() => {
   loadPreferences()
   void loadUserSettings()
   void loadTranscodeSettings()
+  void fetchTags()
 })
 </script>
 
@@ -108,7 +111,7 @@ onMounted(() => {
       />
     </div>
 
-    <div class="flex flex-1 flex-col justify-center p-5 sm:p-6">
+    <div class="flex flex-1 flex-col justify-start overflow-y-auto p-5 sm:p-6">
       <div
         class="grid gap-5"
         :class="gridClass"
@@ -268,6 +271,19 @@ onMounted(() => {
             />
           </div>
         </div>
+      </div>
+
+      <div class="mt-5 space-y-3 border-t border-default pt-5">
+        <h3 class="text-sm font-semibold">
+          {{ t('preferences.uploadTags') }}
+        </h3>
+        <p class="text-xs leading-relaxed text-muted">
+          {{ t('preferences.uploadTagsHint') }}
+        </p>
+        <TagAssignPanel
+          v-model="lastTagIds"
+          :tags="tagItems"
+        />
       </div>
     </div>
   </div>

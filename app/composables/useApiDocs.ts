@@ -310,6 +310,13 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
           location: 'form-data',
           required: false,
           descriptionKey: 'api.params.videoUpload.token'
+        },
+        {
+          name: 'tagNames',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.upload.tagNames'
         }
       ],
       curl: `curl -X POST "${baseUrl}/api/videos/upload" \\
@@ -317,7 +324,8 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
   -F "video=@./demo.mp4" \\
   -F "transcode=1" \\
   -F "transcodePreset=compress" \\
-  -F "transcodeBitratePercent=80"`,
+  -F "transcodeBitratePercent=80" \\
+  -F 'tagNames=["博客","视频"]'`,
       responseExample: `{
   "success": true,
   "items": [
@@ -329,7 +337,11 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
       "size": 10485760,
       "uploadedAt": "2026-10-17T03:00:00.000Z",
       "markdown": "[demo.mp4](https://pic.example.com/videos/2026/10/abc123.mp4)",
-      "thumbUrl": "https://pic.example.com/videos/2026/10/abc123.webp"
+      "thumbUrl": "https://pic.example.com/videos/2026/10/abc123.webp",
+      "tags": [
+        { "id": 3, "name": "博客", "color": "#22c55e" },
+        { "id": 8, "name": "视频", "color": "#3b82f6" }
+      ]
     }
   ],
   "errors": [],
@@ -619,11 +631,19 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
           location: 'form-data',
           required: false,
           descriptionKey: 'api.params.fileUpload.token'
+        },
+        {
+          name: 'tagNames',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.upload.tagNames'
         }
       ],
       curl: `curl -X POST "${baseUrl}/api/files/upload" \\
   ${auth} \\
-  -F "file=@./report.pdf"`,
+  -F "file=@./report.pdf" \\
+  -F 'tagNames=["文档","归档"]'`,
       responseExample: `{
   "success": true,
   "items": [
@@ -634,7 +654,11 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
       "contentType": "application/pdf",
       "size": 5242880,
       "uploadedAt": "2026-10-17T03:00:00.000Z",
-      "markdown": "[report.pdf](https://pic.example.com/files/2026/10/abc123.pdf)"
+      "markdown": "[report.pdf](https://pic.example.com/files/2026/10/abc123.pdf)",
+      "tags": [
+        { "id": 4, "name": "文档", "color": "#f59e0b" },
+        { "id": 9, "name": "归档", "color": "#64748b" }
+      ]
     }
   ],
   "errors": [],

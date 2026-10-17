@@ -327,7 +327,9 @@
     "transcodeLoadFailed": "Failed to load transcode settings",
     "transcodeSaveFailed": "Failed to save transcode settings",
     "autoCopy": "Copy link after upload",
-    "autoCopyHint": "Copy to clipboard in the selected format"
+    "autoCopyHint": "Copy to clipboard in the selected format",
+    "uploadTags": "Upload tags",
+    "uploadTagsHint": "Tags selected here are applied to images, videos, and files; missing tags are created automatically."
   },
   "settings": {
     "title": "System settings",

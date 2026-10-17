@@ -11,6 +11,11 @@ import { createApiError } from '../../utils/api-error'
 import { checkUploadRateLimit } from '../../utils/rate-limit'
 import { processSingleFileUpload } from '../../utils/file-bed'
 import { getFileBedAccessMode } from '../../utils/env'
+import { readMultipartFormFieldValues } from '../../utils/multipart-form'
+import {
+  parseTagNamesParam,
+  resolveUploadTagIds
+} from '../../utils/tags'
 
 export default defineEventHandler(async (event) => {
   await requireUploadAuth(event)
@@ -28,6 +33,15 @@ export default defineEventHandler(async (event) => {
 
   const source = verifyApiUploadToken(event) ? 'api' : 'web'
   const uploadUserId = await getUploadUserId(event, formToken)
+  const tagNamesRaw = readMultipartFormFieldValues(formData, 'tagNames')
+  const uploadTagNames = parseTagNamesParam(
+    tagNamesRaw.length === 1 ? tagNamesRaw[0] : tagNamesRaw
+  )
+  const resolvedTags = resolveUploadTagIds(uploadUserId, uploadTagNames)
+  if ('message' in resolvedTags) {
+    createApiError(event, 'INVALID_REQUEST', resolvedTags.message, 400)
+  }
+  const uploadTagIds = resolvedTags.tagIds
 
   const fileParts = formData.filter(
     part => (part.name === 'file' || part.name === 'files') && part.data?.length
@@ -54,7 +68,8 @@ export default defineEventHandler(async (event) => {
       filename: part.filename,
       contentType: part.type,
       source,
-      userId: uploadUserId
+      userId: uploadUserId,
+      tagIds: uploadTagIds
     })
 
     if ('error' in result) {

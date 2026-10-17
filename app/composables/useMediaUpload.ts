@@ -54,8 +54,10 @@ export function useMediaUpload(kind: UploadMediaKind) {
     autoCopyMarkdown,
     copyFormat,
     transcodeToHls,
+    lastTagIds,
     loadPreferences
   } = useUploadPreferences(kind)
+  const { items: tagItems, fetchTags } = useTags()
 
   const uploading = ref(false)
   const progressItems = ref<UploadProgressItem[]>([])
@@ -231,6 +233,15 @@ export function useMediaUpload(kind: UploadMediaKind) {
 
       if (kind === 'video' && transcodeToHls.value) {
         formData.append('transcode', '1')
+      }
+      if (lastTagIds.value.length) {
+        await fetchTags()
+        const names = lastTagIds.value
+          .map(id => tagItems.value.find(tag => tag.id === id)?.name)
+          .filter((name): name is string => Boolean(name))
+        if (names.length) {
+          formData.append('tagNames', JSON.stringify(names))
+        }
       }
 
       progressItems.value = progressItems.value.map(item => ({
