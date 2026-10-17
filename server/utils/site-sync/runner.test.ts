@@ -62,7 +62,11 @@ describe('fetchSiteSyncJson', () => {
   it('stops retrying immediately when the job is cancelled', async () => {
     const jobId = 'cancel-test'
     beginJobCancellationScope(jobId)
-    const operation = vi.fn().mockRejectedValue(new Error('connection reset'))
+    const operation = vi.fn().mockImplementation(() => (
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('connection reset')), 1000)
+      })
+    ))
     const result = retrySiteSyncOperation(operation, getJobAbortSignal(jobId))
 
     setTimeout(() => requestJobCancellation(jobId), 25)
@@ -70,5 +74,41 @@ describe('fetchSiteSyncJson', () => {
     await expect(result).rejects.toThrow('任务已取消')
     expect(operation).toHaveBeenCalledTimes(1)
     endJobCancellationScope(jobId)
+  })
+
+  it('reports every retry attempt and backoff to the job status', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'))
+      .mockResolvedValueOnce(new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }))
+    vi.stubGlobal('fetch', fetchMock)
+    const statuses: Array<{
+      attempt: number
+      phase: string
+      delayMs?: number
+    }> = []
+
+    await expect(fetchSiteSyncJson(
+      'http://target/api',
+      'token',
+      undefined,
+      undefined,
+      status => statuses.push(status)
+    )).resolves.toEqual({ ok: true })
+
+    expect(
+      statuses
+        .filter(status => status.phase !== 'countdown')
+        .map(status => `${status.phase}:${status.attempt}`)
+    ).toEqual([
+      'attempt:1',
+      'retry:1',
+      'attempt:2'
+    ])
+    expect(
+      statuses.find(status => status.phase === 'retry')?.delayMs
+    ).toBe(0)
   })
 })

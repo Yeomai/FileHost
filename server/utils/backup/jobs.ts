@@ -17,6 +17,7 @@ export interface BackupJob {
   outputPath: string | null
   error: string | null
   createdAt: string
+  updatedAt: string
   finishedAt: string | null
 }
 
@@ -32,6 +33,7 @@ interface BackupJobRow {
   output_path: string | null
   error: string | null
   created_at: string
+  updated_at: string
   finished_at: string | null
 }
 
@@ -55,6 +57,7 @@ function rowToJob(row: BackupJobRow): BackupJob {
     outputPath: row.output_path,
     error: row.error,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
     finishedAt: row.finished_at
   }
 }
@@ -69,7 +72,7 @@ export function getRunningBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, finished_at
+           output_path, error, created_at, updated_at, finished_at
     FROM backup_jobs
     WHERE status = 'running'${userId === undefined ? '' : ' AND user_id = ?'}
     LIMIT 1
@@ -81,7 +84,7 @@ export function getActiveBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, finished_at
+           output_path, error, created_at, updated_at, finished_at
     FROM backup_jobs
     WHERE status IN ('pending', 'running')${userId === undefined ? '' : ' AND user_id = ?'}
     ORDER BY created_at DESC
@@ -105,8 +108,8 @@ export function createBackupJob(input: {
 
   getDb().prepare(`
     INSERT INTO backup_jobs
-      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
-    VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, ?, NULL)
+      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, finished_at)
+    VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, ?, ?, NULL)
   `).run(
     id,
     userId,
@@ -114,6 +117,7 @@ export function createBackupJob(input: {
     input.total ?? 0,
     input.message ?? '',
     payloadJson,
+    now,
     now
   )
 
@@ -124,7 +128,7 @@ export function getBackupJob(id: string, userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, finished_at
+           output_path, error, created_at, updated_at, finished_at
     FROM backup_jobs
     WHERE id = ?${userId === undefined ? '' : ' AND user_id = ?'}
   `).get(...(userId === undefined ? [id] : [id, userId])) as BackupJobRow | undefined
@@ -156,7 +160,7 @@ export function listBackupJobsPage(
   const total = countBackupJobs(userId)
   const rows = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, finished_at
+           output_path, error, created_at, updated_at, finished_at
     FROM backup_jobs
     ${userId === undefined ? '' : 'WHERE user_id = ?'}
     ORDER BY created_at DESC
@@ -169,7 +173,7 @@ export function listAllBackupJobsForUser(userId: number): BackupJob[] {
   ensureBackupSchema()
   const rows = getDb().prepare(`
     SELECT id, user_id, type, status, progress, total, message, payload_json,
-           output_path, error, created_at, finished_at
+           output_path, error, created_at, updated_at, finished_at
     FROM backup_jobs
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -197,8 +201,8 @@ export function restoreBackupJobsAfterReplace(preserved: BackupJob[]): void {
     db.prepare('DELETE FROM backup_jobs').run()
     const insert = db.prepare(`
       INSERT INTO backup_jobs
-        (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const job of preserved) {
       insert.run(
@@ -213,6 +217,7 @@ export function restoreBackupJobsAfterReplace(preserved: BackupJob[]): void {
         job.outputPath,
         job.error,
         job.createdAt,
+        job.updatedAt,
         job.finishedAt
       )
     }
@@ -232,9 +237,10 @@ export function recoverInterruptedBackupJobs(): number {
     SET status = 'failed',
         error = '任务中断（服务重启或异常退出）',
         message = '任务已中断，请重试',
+        updated_at = ?,
         finished_at = ?
     WHERE status = 'running'
-  `).run(finishedAt)
+  `).run(finishedAt, finishedAt)
   return Number(result.changes ?? 0)
 }
 
@@ -263,13 +269,14 @@ export function updateBackupJob(
     payload: patch.payload ?? current.payload,
     outputPath: patch.outputPath !== undefined ? patch.outputPath : current.outputPath,
     error: patch.error !== undefined ? patch.error : current.error,
+    updatedAt: new Date().toISOString(),
     finishedAt: patch.finishedAt !== undefined ? patch.finishedAt : current.finishedAt
   }
 
   getDb().prepare(`
     UPDATE backup_jobs
     SET status = ?, progress = ?, total = ?, message = ?, payload_json = ?,
-        output_path = ?, error = ?, finished_at = ?
+        output_path = ?, error = ?, updated_at = ?, finished_at = ?
     WHERE id = ?
   `).run(
     next.status,
@@ -279,9 +286,23 @@ export function updateBackupJob(
     JSON.stringify(next.payload),
     next.outputPath,
     next.error,
+    next.updatedAt,
     next.finishedAt,
     id
   )
+}
+
+/** Update job data without changing its last activity timestamp. */
+export function updateBackupJobPayload(
+  id: string,
+  payload: Record<string, unknown>
+): void {
+  ensureBackupSchema()
+  getDb().prepare(`
+    UPDATE backup_jobs
+    SET payload_json = ?
+    WHERE id = ?
+  `).run(JSON.stringify(payload), id)
 }
 
 export function markJobRunning(id: string, message?: string): void {

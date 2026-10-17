@@ -142,7 +142,7 @@ function formatTime(value: string) {
               {{ t('storage.backup.colProgress') }}
             </th>
             <th class="px-4 py-3 font-medium sm:px-5">
-              {{ t('storage.backup.colCreated') }}
+              {{ t('storage.backup.colUpdated') }}
             </th>
             <th class="px-4 py-3 font-medium sm:px-5">
               {{ t('storage.backup.colActions') }}
@@ -203,7 +203,7 @@ function formatTime(value: string) {
               </div>
             </td>
             <td class="px-4 py-3.5 whitespace-nowrap text-xs text-muted sm:px-5">
-              {{ formatTime(job.createdAt) }}
+              {{ formatTime(job.updatedAt || job.finishedAt || job.createdAt) }}
             </td>
             <td class="px-4 py-3.5 sm:px-5">
               <div class="flex flex-wrap gap-1.5">

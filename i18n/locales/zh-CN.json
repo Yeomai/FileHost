@@ -745,6 +745,7 @@
       "progressUnitObjects": "存储对象",
       "colMessage": "说明",
       "colCreated": "创建时间",
+      "colUpdated": "更新时间",
       "colActions": "操作",
       "jobTypeExport": "站点导出",
       "jobTypeRestore": "站点恢复",

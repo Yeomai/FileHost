@@ -8,6 +8,7 @@ import {
   markJobFailed,
   markJobRunning,
   recoverInterruptedBackupJobs,
+  updateBackupJobPayload,
   type BackupJob
 } from './jobs'
 import {
@@ -149,22 +150,41 @@ export function resumeSiteSyncJob(
   userId?: number | null
 ): BackupJob {
   claimJobSlot()
-  const job = getBackupJob(jobId, userId ?? undefined)
+  const previousJob = getBackupJob(jobId, userId ?? undefined)
   if (
-    !job
-    || job.type !== 'site_sync'
-    || job.status !== 'failed'
-    || job.payload.resumable !== true
+    !previousJob
+    || previousJob.type !== 'site_sync'
+    || previousJob.status !== 'failed'
+    || previousJob.payload.resumable !== true
   ) {
     throw new Error('SITE_SYNC_JOB_NOT_RESUMABLE')
   }
-  const targetBaseUrl = typeof job.payload.targetBaseUrl === 'string'
-    ? job.payload.targetBaseUrl
+  const targetBaseUrl = typeof previousJob.payload.targetBaseUrl === 'string'
+    ? previousJob.payload.targetBaseUrl
     : ''
-  const conflictMode = job.payload.conflictMode === 'skip' ? 'skip' : 'overwrite'
-  const direction = job.payload.direction === 'pull' ? 'pull' : 'push'
+  const conflictMode = previousJob.payload.conflictMode === 'skip'
+    ? 'skip'
+    : 'overwrite'
+  const direction = previousJob.payload.direction === 'pull' ? 'pull' : 'push'
   if (!targetBaseUrl) throw new Error('SITE_SYNC_JOB_NOT_RESUMABLE')
 
+  const job = createBackupJob({
+    type: 'site_sync',
+    userId: previousJob.userId,
+    total: previousJob.total,
+    message: `继续任务 ${previousJob.id}…`,
+    payload: {
+      ...previousJob.payload,
+      resumedFromJobId: previousJob.id,
+      resumedAt: new Date().toISOString(),
+      cancelled: false
+    }
+  })
+  updateBackupJobPayload(previousJob.id, {
+    ...previousJob.payload,
+    resumable: false,
+    supersededByJobId: job.id
+  })
   registerSiteSyncToken(job.id, token)
   scheduleBackupJob(job, () => runSiteSyncJob(job.id, {
     targetBaseUrl,

@@ -1,4 +1,8 @@
 import { basename } from 'node:path'
+import {
+  Agent,
+  fetch as undiciFetch
+} from 'undici'
 import type { Readable } from 'node:stream'
 import { contentTypeFromKey } from '../content-type'
 import {
@@ -26,7 +30,6 @@ import {
 import {
   createJobCancelledError,
   getJobAbortSignal,
-  getJobOperationSignal,
   isJobCancellationRequested,
   isJobCancelledError,
   throwIfJobCancellationRequested
@@ -62,8 +65,32 @@ export function registerSiteSyncToken(jobId: string, token: string): void {
   tokens.set(jobId, token)
 }
 
-const SITE_SYNC_JSON_TIMEOUT_MS = 2 * 60 * 1000
-const SITE_SYNC_OBJECT_TIMEOUT_MS = 15 * 60 * 1000
+const SITE_SYNC_CONNECT_TIMEOUT_MS = 3 * 1000
+const SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS = 3 * 1000
+const SITE_SYNC_UPLOAD_HEADERS_TIMEOUT_MS = 10 * 60 * 1000
+
+interface SiteSyncAgents {
+  upload: Agent
+  object: Agent
+}
+
+const agents = (globalThis as typeof globalThis & {
+  __pichostSiteSyncAgents?: SiteSyncAgents
+}).__pichostSiteSyncAgents ?? {
+  upload: new Agent({
+    connect: { timeout: SITE_SYNC_CONNECT_TIMEOUT_MS },
+    headersTimeout: SITE_SYNC_UPLOAD_HEADERS_TIMEOUT_MS,
+    bodyTimeout: SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS
+  }),
+  object: new Agent({
+    connect: { timeout: SITE_SYNC_CONNECT_TIMEOUT_MS },
+    headersTimeout: SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS,
+    bodyTimeout: SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS
+  })
+}
+;(globalThis as typeof globalThis & {
+  __pichostSiteSyncAgents?: SiteSyncAgents
+}).__pichostSiteSyncAgents = agents
 
 async function streamToBuffer(
   stream: Readable,
@@ -84,7 +111,10 @@ function targetUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}${path}`
 }
 
-async function responseError(response: Response): Promise<Error> {
+async function responseError(response: {
+  status: number
+  json: () => Promise<unknown>
+}): Promise<Error> {
   const payload = await response.json().catch(() => null) as {
     message?: string
     statusMessage?: string
@@ -92,11 +122,60 @@ async function responseError(response: Response): Promise<Error> {
   return new Error(payload?.message || payload?.statusMessage || `目标站点返回 ${response.status}`)
 }
 
+function parseResponseErrorText(
+  text: string,
+  status: number
+): Error {
+  try {
+    const payload = JSON.parse(text) as {
+      message?: string
+      statusMessage?: string
+    }
+    return new Error(
+      payload.message
+      || payload.statusMessage
+      || `目标站点返回 ${status}`
+    )
+  } catch {
+    return new Error(`目标站点返回 ${status}`)
+  }
+}
+
 const SITE_SYNC_MAX_ATTEMPTS = 3
 
+export interface SiteSyncRetryStatus {
+  attempt: number
+  maxAttempts: number
+  phase: 'attempt' | 'countdown' | 'retry'
+  delayMs?: number
+  remainingMs?: number
+  error?: Error
+}
+
+function formatRetryStatus(
+  step: string,
+  status: SiteSyncRetryStatus
+): string {
+  if (status.phase === 'attempt') {
+    return `${step}（第 ${status.attempt}/${status.maxAttempts} 次）`
+  }
+  if (status.phase === 'countdown') {
+    const seconds = Math.max(
+      1,
+      Math.ceil((status.remainingMs ?? 0) / 1000)
+    )
+    return `${step}（第 ${status.attempt}/${status.maxAttempts} 次）· 连接倒计时 ${seconds}s`
+  }
+  if ((status.delayMs ?? 0) < 1000) {
+    return `${step}第 ${status.attempt}/${status.maxAttempts} 次无响应，即将重试：${status.error?.message ?? '连接失败'}`
+  }
+  const seconds = Math.max(1, Math.round((status.delayMs ?? 0) / 1000))
+  return `${step}第 ${status.attempt}/${status.maxAttempts} 次失败，${seconds} 秒后重试：${status.error?.message ?? '连接失败'}`
+}
+
 function normalizeSiteSyncError(error: Error): Error {
-  if (error.name === 'TimeoutError') {
-    return new Error('目标站点连接超时或无响应')
+  if (/timeout/i.test(error.name) || /timed out|idle for too long/i.test(error.message)) {
+    return new Error('目标站点在 3 秒内未响应')
   }
   if (error instanceof TypeError && /fetch failed|terminated/i.test(error.message)) {
     return new Error('目标站点无法连接')
@@ -106,17 +185,57 @@ function normalizeSiteSyncError(error: Error): Error {
 
 export async function retrySiteSyncOperation<T>(
   operation: () => Promise<T>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onStatus?: (status: SiteSyncRetryStatus) => void
 ): Promise<T> {
   if (signal?.aborted) throw createJobCancelledError()
   let lastError: Error | null = null
   for (let attempt = 1; attempt <= SITE_SYNC_MAX_ATTEMPTS; attempt++) {
+    let countdownTimer: ReturnType<typeof setInterval> | null = null
     try {
+      onStatus?.({
+        attempt,
+        maxAttempts: SITE_SYNC_MAX_ATTEMPTS,
+        phase: 'attempt'
+      })
+      if (onStatus) {
+        let remainingMs = SITE_SYNC_CONNECT_TIMEOUT_MS
+        onStatus({
+          attempt,
+          maxAttempts: SITE_SYNC_MAX_ATTEMPTS,
+          phase: 'countdown',
+          remainingMs
+        })
+        countdownTimer = setInterval(() => {
+          remainingMs -= 1000
+          if (remainingMs <= 0) {
+            if (countdownTimer) clearInterval(countdownTimer)
+            countdownTimer = null
+            return
+          }
+          onStatus({
+            attempt,
+            maxAttempts: SITE_SYNC_MAX_ATTEMPTS,
+            phase: 'countdown',
+            remainingMs
+          })
+        }, 1000)
+      }
       return await operation()
     } catch (error) {
+      if (countdownTimer) clearInterval(countdownTimer)
+      countdownTimer = null
       if (signal?.aborted) throw createJobCancelledError()
       lastError = error instanceof Error ? error : new Error('两站点同步失败')
       if (attempt < SITE_SYNC_MAX_ATTEMPTS) {
+        const delayMs = 0
+        onStatus?.({
+          attempt,
+          maxAttempts: SITE_SYNC_MAX_ATTEMPTS,
+          phase: 'retry',
+          delayMs,
+          error: normalizeSiteSyncError(lastError)
+        })
         await new Promise<void>((resolve, reject) => {
           const onAbort = () => {
             clearTimeout(timer)
@@ -125,10 +244,12 @@ export async function retrySiteSyncOperation<T>(
           const timer = setTimeout(() => {
             signal?.removeEventListener('abort', onAbort)
             resolve()
-          }, attempt * 500)
+          }, delayMs)
           signal?.addEventListener('abort', onAbort, { once: true })
         })
       }
+    } finally {
+      if (countdownTimer) clearInterval(countdownTimer)
     }
   }
   throw lastError
@@ -141,34 +262,124 @@ async function fetchSiteSyncJsonOnce<T>(
   token: string,
   init?: RequestInit
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      'Auth-Token': token,
-      ...(init?.headers ?? {})
+  const connectionController = new AbortController()
+  const onAbort = () => connectionController.abort(createJobCancelledError())
+  init?.signal?.addEventListener('abort', onAbort, { once: true })
+  const timeout = setTimeout(() => {
+    connectionController.abort(new DOMException(
+      'Target connection or TLS handshake timed out',
+      'TimeoutError'
+    ))
+  }, SITE_SYNC_CONNECT_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        'Auth-Token': token,
+        ...(init?.headers ?? {})
+      },
+      signal: init?.signal
+        ? AbortSignal.any([init.signal, connectionController.signal])
+        : connectionController.signal
+    })
+    clearTimeout(timeout)
+
+    if (!response.body) {
+      const text = await response.text()
+      if (!response.ok) throw parseResponseErrorText(text, response.status)
+      return JSON.parse(text) as T
     }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    try {
+      while (true) {
+        const chunk = await readChunkWithIdleTimeout(
+          reader,
+          init?.signal ?? undefined
+        )
+        if (chunk.done) break
+        text += decoder.decode(chunk.value, { stream: true })
+      }
+      text += decoder.decode()
+    } finally {
+      reader.releaseLock()
+    }
+    if (!response.ok) throw parseResponseErrorText(text, response.status)
+    return JSON.parse(text) as T
+  } finally {
+    clearTimeout(timeout)
+    init?.signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+async function readChunkWithIdleTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal?: AbortSignal
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (signal?.aborted) {
+    await reader.cancel().catch(() => {})
+    throw createJobCancelledError()
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const onAbort = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      void reader.cancel().catch(() => {})
+      reject(createJobCancelledError())
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      cleanup()
+      void reader.cancel().catch(() => {})
+      reject(new DOMException(
+        'Target response body was idle for too long',
+        'TimeoutError'
+      ))
+    }, SITE_SYNC_RESPONSE_IDLE_TIMEOUT_MS)
+    signal?.addEventListener('abort', onAbort, { once: true })
+
+    reader.read().then(
+      (result) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve(result)
+      },
+      (error) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(error)
+      }
+    )
   })
-  if (!response.ok) throw await responseError(response)
-  return await response.json() as T
 }
 
 export async function fetchSiteSyncJson<T>(
   url: string,
   token: string,
   init?: RequestInit,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onStatus?: (status: SiteSyncRetryStatus) => void
 ): Promise<T> {
   return retrySiteSyncOperation(
     () => fetchSiteSyncJsonOnce<T>(url, token, {
       ...init,
-      signal: signal
-        ? AbortSignal.any([
-            signal,
-            AbortSignal.timeout(SITE_SYNC_JSON_TIMEOUT_MS)
-          ])
-        : AbortSignal.timeout(SITE_SYNC_JSON_TIMEOUT_MS)
+      signal
     }),
-    signal
+    signal,
+    onStatus
   )
 }
 
@@ -205,15 +416,18 @@ async function uploadObject(
     basename(key)
   )
 
-  await fetchSiteSyncJsonOnce<{ success: boolean }>(
+  const response = await undiciFetch(
     targetUrl(options.targetBaseUrl, '/api/site-sync/object'),
-    token,
     {
       method: 'POST',
       body: form,
-      signal: getJobOperationSignal(jobId, SITE_SYNC_OBJECT_TIMEOUT_MS)
-    }
+      headers: { 'Auth-Token': token },
+      signal: getJobAbortSignal(jobId),
+      dispatcher: agents.upload
+    } as Parameters<typeof undiciFetch>[1]
   )
+  if (!response.ok) throw await responseError(response)
+  await response.json().catch(() => null)
 }
 
 async function downloadSiteSyncObject(
@@ -222,7 +436,7 @@ async function downloadSiteSyncObject(
   token: string,
   key: string
 ): Promise<Buffer> {
-  const response = await fetch(
+  const response = await undiciFetch(
     targetUrl(
       options.targetBaseUrl,
       `/api/site-sync/object?key=${encodeURIComponent(key)}`
@@ -231,7 +445,8 @@ async function downloadSiteSyncObject(
       headers: {
         'Auth-Token': token
       },
-      signal: getJobOperationSignal(jobId, SITE_SYNC_OBJECT_TIMEOUT_MS)
+      signal: getJobAbortSignal(jobId),
+      dispatcher: agents.object
     }
   )
   if (!response.ok) throw await responseError(response)
@@ -287,6 +502,16 @@ async function runSiteSyncPull(
   const progressMessage = (suffix = '') => (
     `扫描 ${scanned}/${totalMedia || scanned} · 新增 ${added} · 跳过 ${skipped} · 失败 ${failedKeys.size}${suffix}`
   )
+  const updateLiveStatus = (step: string, status?: SiteSyncRetryStatus) => {
+    const detail = status ? formatRetryStatus(step, status) : step
+    try {
+      updateBackupJob(jobId, {
+        message: progressMessage(` · ${detail}`)
+      })
+    } catch {
+      // Progress messages must never fail the sync itself.
+    }
+  }
   const failAndCheckpoint = (error: unknown) => {
     const cancelled = isJobCancellationRequested(jobId)
       || isJobCancelledError(error)
@@ -311,7 +536,8 @@ async function runSiteSyncPull(
         targetUrl(options.targetBaseUrl, '/api/site-sync/users'),
         token,
         undefined,
-        jobSignal
+        jobSignal,
+        status => updateLiveStatus('连接目标站点', status)
       )).users
     )
 
@@ -324,15 +550,18 @@ async function runSiteSyncPull(
       targetUrl(options.targetBaseUrl, path),
       token,
       undefined,
-      jobSignal
+      jobSignal,
+      status => updateLiveStatus('读取远程媒体清单', status)
     )
 
     const processBundleOnce = async (
       bundle: SiteSyncMediaBundle,
-      isRetry: boolean
+      isRetry: boolean,
+      setStep: (step: string) => void
     ): Promise<'added' | 'skipped'> => {
       const { media, assets } = bundle
       throwIfJobCancellationRequested(jobId)
+      setStep(`准备同步媒体 ${media.key}`)
       if (media.ownerUsername && !targetUsers.has(media.ownerUsername)) {
         throw new Error(`当前站点缺少同名用户：${media.ownerUsername}`)
       }
@@ -350,6 +579,7 @@ async function runSiteSyncPull(
         : null
       for (const asset of assets) {
         throwIfJobCancellationRequested(jobId)
+        setStep(`下载对象 ${basename(asset.key)}`)
         const existedBefore = Boolean(await backend.head(asset.key))
         if (options.conflictMode === 'skip' && existedBefore) {
           continue
@@ -366,6 +596,7 @@ async function runSiteSyncPull(
             `同步对象大小不一致：${asset.key}，预期 ${asset.size}，实际 ${bytes.length}`
           )
         }
+        setStep(`写入对象 ${basename(asset.key)}`)
         const isPrimary = asset.key === media.key
         recordSiteSyncArtifact({
           jobId,
@@ -393,16 +624,23 @@ async function runSiteSyncPull(
         throwIfJobCancellationRequested(jobId)
       }
 
+      setStep(`写入媒体记录 ${media.key}`)
       await applySiteSyncMedia(media, 'overwrite', actorUserId)
       completeSiteSyncMediaArtifacts(jobId, media.key)
       return 'added'
     }
-    const processBundle = (bundle: SiteSyncMediaBundle, isRetry: boolean) => (
-      retrySiteSyncOperation(
-        () => processBundleOnce(bundle, isRetry),
-        jobSignal
+    const processBundle = (bundle: SiteSyncMediaBundle, isRetry: boolean) => {
+      let step = `同步媒体 ${bundle.media.key}`
+      return retrySiteSyncOperation(
+        () => processBundleOnce(
+          bundle,
+          isRetry,
+          (value) => { step = value }
+        ),
+        jobSignal,
+        status => updateLiveStatus(step, status)
       )
-    )
+    }
     const recordOutcome = (outcome: 'added' | 'skipped', fileCount: number) => {
       if (outcome === 'added') added += 1
       else skipped += 1
@@ -525,7 +763,16 @@ export async function runSiteSyncJob(
       targetUrl(options.targetBaseUrl, '/api/site-sync/inventory'),
       token,
       undefined,
-      jobSignal
+      jobSignal,
+      (status) => {
+        try {
+          updateBackupJob(jobId, {
+            message: formatRetryStatus('连接目标站点', status)
+          })
+        } catch {
+          // Keep the sync running even if a progress update cannot be stored.
+        }
+      }
     )
     const targetUsers = new Set(inventory.users)
     const targetMedia = new Set(inventory.mediaKeys)
@@ -614,6 +861,16 @@ export async function runSiteSyncJob(
         }
       })
     }
+    const updateLiveStatus = (step: string, status?: SiteSyncRetryStatus) => {
+      const detail = status ? formatRetryStatus(step, status) : step
+      try {
+        updateBackupJob(jobId, {
+          message: `扫描 ${scanned}/${rows.length} · 新增 ${added} · 跳过 ${skipped} · 失败 ${failedKeys.size} · ${detail}`
+        })
+      } catch {
+        // Progress messages must never fail the sync itself.
+      }
+    }
 
     plans.sort((a, b) => (
       a.row.key < b.row.key
@@ -624,14 +881,20 @@ export async function runSiteSyncJob(
     ))
     lastMediaKey = lastMediaKey || ''
     let lastCheckpointAt = 0
-    const processPlanOnce = async (plan: typeof plans[number], isRetry: boolean) => {
+    const processPlanOnce = async (
+      plan: typeof plans[number],
+      isRetry: boolean,
+      setStep: (step: string) => void
+    ) => {
       const { row, ownerUsername, backend, keys } = plan
       throwIfJobCancellationRequested(jobId)
+      setStep(`准备同步媒体 ${row.key}`)
       if (
         !isRetry
         && options.conflictMode === 'skip'
         && targetMedia.has(row.key)
       ) {
+        setStep(`提交已存在的媒体 ${row.key}`)
         await fetchSiteSyncJsonOnce<{ success: boolean }>(
           targetUrl(options.targetBaseUrl, '/api/site-sync/complete'),
           token,
@@ -639,7 +902,7 @@ export async function runSiteSyncJob(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ jobId, mediaKey: row.key }),
-            signal: getJobOperationSignal(jobId, SITE_SYNC_JSON_TIMEOUT_MS)
+            signal: getJobAbortSignal(jobId)
           }
         )
         skipped += 1
@@ -650,6 +913,7 @@ export async function runSiteSyncJob(
 
       for (const key of keys) {
         throwIfJobCancellationRequested(jobId)
+        setStep(`上传对象 ${basename(key)}`)
         const stored = await backend.head(key)
         if (!stored) throw new Error(`源文件不存在：${key}`)
         if (
@@ -670,6 +934,7 @@ export async function runSiteSyncJob(
       }
 
       throwIfJobCancellationRequested(jobId)
+      setStep(`写入媒体记录 ${row.key}`)
       await fetchSiteSyncJsonOnce<{ success: boolean }>(
         targetUrl(options.targetBaseUrl, '/api/site-sync/media'),
         token,
@@ -681,7 +946,7 @@ export async function runSiteSyncJob(
             media: toSiteSyncMediaTransferWithTags(row, ownerUsername),
             conflictMode: options.conflictMode
           }),
-          signal: getJobOperationSignal(jobId, SITE_SYNC_JSON_TIMEOUT_MS)
+          signal: getJobAbortSignal(jobId)
         }
       )
 
@@ -692,10 +957,18 @@ export async function runSiteSyncJob(
     const processPlan = (
       plan: typeof plans[number],
       isRetry: boolean
-    ) => retrySiteSyncOperation(
-      () => processPlanOnce(plan, isRetry),
-      jobSignal
-    )
+    ) => {
+      let step = `同步媒体 ${plan.row.key}`
+      return retrySiteSyncOperation(
+        () => processPlanOnce(
+          plan,
+          isRetry,
+          (value) => { step = value }
+        ),
+        jobSignal,
+        status => updateLiveStatus(step, status)
+      )
+    }
 
     const retryPlans = plans.filter(plan => failedKeys.has(plan.row.key))
     for (const plan of retryPlans) {
@@ -712,7 +985,9 @@ export async function runSiteSyncJob(
           jobId,
           cancelled
             ? '任务已取消'
-            : '连续 3 次重试失败，已保存断点',
+            : error instanceof Error
+              ? `${error.message} · 已保存断点`
+              : '连续 3 次重试失败，已保存断点',
           message
         )
         return
@@ -735,7 +1010,9 @@ export async function runSiteSyncJob(
           jobId,
           cancelled
             ? '任务已取消'
-            : '连续 3 次重试失败，已保存断点',
+            : error instanceof Error
+              ? `${error.message} · 已保存断点`
+              : '连续 3 次重试失败，已保存断点',
           message
         )
         return

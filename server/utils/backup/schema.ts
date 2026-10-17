@@ -24,11 +24,12 @@ function migrateBackupJobTypes(): void {
       output_path TEXT,
       error TEXT,
       created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       finished_at TEXT
     );
     INSERT INTO backup_jobs_new
-      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
-    SELECT id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at
+      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, updated_at, finished_at)
+    SELECT id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, COALESCE(updated_at, created_at), finished_at
     FROM backup_jobs;
     DROP TABLE backup_jobs;
     ALTER TABLE backup_jobs_new RENAME TO backup_jobs;
@@ -53,6 +54,7 @@ export function ensureBackupSchema(): void {
       output_path TEXT,
       error TEXT,
       created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_backup_jobs_created_at
@@ -65,6 +67,9 @@ export function ensureBackupSchema(): void {
   if (!columns.some(column => column.name === 'user_id')) {
     getDb().exec('ALTER TABLE backup_jobs ADD COLUMN user_id INTEGER')
   }
+  if (!columns.some(column => column.name === 'updated_at')) {
+    getDb().exec('ALTER TABLE backup_jobs ADD COLUMN updated_at TEXT')
+  }
   getDb().exec(`
     CREATE INDEX IF NOT EXISTS idx_backup_jobs_user_created
       ON backup_jobs(user_id, created_at DESC);
@@ -74,6 +79,13 @@ export function ensureBackupSchema(): void {
     )
     WHERE user_id IS NULL
       AND EXISTS (SELECT 1 FROM users WHERE role = 'admin');
+    UPDATE backup_jobs
+    SET updated_at = COALESCE(finished_at, created_at)
+    WHERE updated_at IS NULL;
+    UPDATE backup_jobs
+    SET updated_at = finished_at
+    WHERE finished_at IS NOT NULL
+      AND updated_at = created_at;
   `)
   migrateBackupJobTypes()
 }

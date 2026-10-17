@@ -15,6 +15,7 @@ export interface BackupJobItem {
   downloadable: boolean
   error: string | null
   createdAt: string
+  updatedAt: string
   finishedAt: string | null
 }
 
