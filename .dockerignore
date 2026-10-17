@@ -7,3 +7,5 @@ data
 dist
 .env
 *.md
+._*
+.DS_Store
