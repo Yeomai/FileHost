@@ -60,8 +60,12 @@ const isPull = computed(() => direction.value === 'pull')
 const canAbandon = computed(() =>
   !props.busy
   && Boolean(props.resumableJob)
-  && (isPull.value || Boolean(token.value.trim()))
 )
+const abandonConfirm = computed(() => (
+  isPull.value || token.value.trim()
+    ? t('storage.backup.siteSyncAbandonConfirm')
+    : t('storage.backup.siteSyncAbandonWithoutTokenConfirm')
+))
 const directionSubtitle = computed(() => (
   isPull.value
     ? t('storage.backup.siteSyncPullSubtitle')
@@ -110,7 +114,7 @@ function resumeSync() {
 
 function abandonSync() {
   if (!canAbandon.value || !props.resumableJob) return
-  if (!window.confirm(t('storage.backup.siteSyncAbandonConfirm'))) return
+  if (!window.confirm(abandonConfirm.value)) return
   emit('sync', {
     targetBaseUrl: targetBaseUrl.value.trim(),
     token: token.value.trim(),

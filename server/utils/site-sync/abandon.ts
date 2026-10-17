@@ -25,29 +25,41 @@ export async function abandonSiteSyncJob(
   const targetBaseUrl = typeof job.payload.targetBaseUrl === 'string'
     ? job.payload.targetBaseUrl.replace(/\/+$/, '')
     : ''
-  let cleanup: CleanupResult
+  let cleanup: CleanupResult | null = null
+  let cleanupError: string | null = null
   if (direction === 'push') {
-    if (!targetBaseUrl || !token) {
-      throw new Error('放弃推送任务并清理目标站残留时，需要目标站 Token')
-    }
-    cleanup = await fetchSiteSyncJson<CleanupResult>(
-      `${targetBaseUrl}/api/site-sync/cleanup`,
-      token,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId })
+    if (targetBaseUrl && token) {
+      try {
+        cleanup = await fetchSiteSyncJson<CleanupResult>(
+          `${targetBaseUrl}/api/site-sync/cleanup`,
+          token,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobId })
+          }
+        )
+      } catch (error) {
+        cleanupError = error instanceof Error ? error.message : '目标站残留清理失败'
       }
-    )
+    }
   } else {
-    cleanup = await cleanupSiteSyncJobArtifacts(jobId)
+    try {
+      cleanup = await cleanupSiteSyncJobArtifacts(jobId)
+    } catch (error) {
+      cleanupError = error instanceof Error ? error.message : '本地残留清理失败'
+    }
   }
 
-  if (cleanup.failed > 0) {
-    throw new Error(`同步残留清理失败：${cleanup.failed} 个对象`)
-  }
+  const cleanupPending = Boolean(
+    cleanupError
+    || !cleanup
+    || cleanup.failed > 0
+  )
 
-  const message = `已放弃同步 · 清理 ${cleanup.deleted} 个残留对象`
+  const message = cleanupPending
+    ? `已放弃同步 · 残留待清理${cleanupError ? `：${cleanupError}` : ''}`
+    : `已放弃同步 · 清理 ${cleanup!.deleted} 个残留对象`
   updateBackupJob(jobId, {
     status: 'failed',
     message,
@@ -58,6 +70,8 @@ export async function abandonSiteSyncJob(
       resumable: false,
       abandoned: true,
       cancelled: false,
+      cleanupPending,
+      cleanupError,
       failedKeys: [],
       cleanup
     }

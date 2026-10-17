@@ -268,11 +268,17 @@ export function useBackup() {
       )
       await refreshJobsFirstPage()
       startPolling()
+      const cleanupPending = Boolean(
+        body.abandonJobId
+        && data.job.payload.cleanupPending === true
+      )
       toast.add({
-        title: body.abandonJobId
-          ? t('storage.backup.siteSyncAbandoned')
-          : t('storage.backup.siteSyncStarted'),
-        color: 'success'
+        title: cleanupPending
+          ? t('storage.backup.siteSyncAbandonedPendingCleanup')
+          : body.abandonJobId
+            ? t('storage.backup.siteSyncAbandoned')
+            : t('storage.backup.siteSyncStarted'),
+        color: cleanupPending ? 'warning' : 'success'
       })
       return data.job
     } catch (error: unknown) {

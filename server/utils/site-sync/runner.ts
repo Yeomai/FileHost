@@ -1,6 +1,8 @@
 import { basename } from 'node:path'
+import { File as BufferFile } from 'node:buffer'
 import {
   Agent,
+  FormData as UndiciFormData,
   fetch as undiciFetch
 } from 'undici'
 import type { Readable } from 'node:stream'
@@ -399,7 +401,7 @@ async function uploadObject(
     getJobAbortSignal(jobId)
   )
   throwIfJobCancellationRequested(jobId)
-  const form = new FormData()
+  const form = new UndiciFormData()
   const isPrimary = key === row.key
   form.append('jobId', jobId)
   form.append('mediaKey', row.key)
@@ -412,8 +414,11 @@ async function uploadObject(
   form.append('contentType', contentType)
   form.append(
     'file',
-    new Blob([new Uint8Array(bytes)], { type: contentType }),
-    basename(key)
+    new BufferFile(
+      [new Uint8Array(bytes)],
+      basename(key),
+      { type: contentType }
+    )
   )
 
   const response = await undiciFetch(
@@ -424,7 +429,7 @@ async function uploadObject(
       headers: { 'Auth-Token': token },
       signal: getJobAbortSignal(jobId),
       dispatcher: agents.upload
-    } as Parameters<typeof undiciFetch>[1]
+    }
   )
   if (!response.ok) throw await responseError(response)
   await response.json().catch(() => null)
