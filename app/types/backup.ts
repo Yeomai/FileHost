@@ -59,4 +59,5 @@ export interface SiteSyncRequest {
   conflictMode: 'skip' | 'overwrite'
   direction: SiteSyncDirection
   resumeJobId?: string
+  abandonJobId?: string
 }

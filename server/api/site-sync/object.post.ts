@@ -5,6 +5,7 @@ import { MAX_VIDEO_FILE_SIZE } from '../../utils/constants'
 import { findUserByUsername } from '../../utils/db'
 import { validateStorageKey } from '../../utils/image-key'
 import { getActiveBackend } from '../../utils/storage/resolver'
+import { recordSiteSyncArtifact } from '../../utils/site-sync/artifacts'
 
 function field(form: Awaited<ReturnType<typeof readMultipartFormData>>, name: string): string {
   const part = form?.find(item => item.name === name)
@@ -30,11 +31,24 @@ export default defineEventHandler(async (event) => {
   if (conflictMode === 'skip' && await backend.head(key)) {
     return { success: true, skipped: true }
   }
+  const existedBefore = Boolean(await backend.head(key))
 
   const ownerUsername = field(form, 'ownerUsername')
   const owner = ownerUsername ? findUserByUsername(ownerUsername) : null
   if (ownerUsername && !owner) {
     createApiError(event, 'INVALID_REQUEST', `目标站点缺少用户：${ownerUsername}`, 400)
+  }
+
+  const jobId = field(form, 'jobId')
+  const mediaKey = field(form, 'mediaKey')
+  if (jobId && validateStorageKey(mediaKey)) {
+    recordSiteSyncArtifact({
+      jobId,
+      mediaKey,
+      key,
+      backendId: backend.id,
+      created: !existedBefore
+    })
   }
 
   await backend.put(key, new Uint8Array(file.data), {

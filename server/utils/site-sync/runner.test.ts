@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchSiteSyncJson, retrySiteSyncOperation } from './runner'
+import {
+  beginJobCancellationScope,
+  endJobCancellationScope,
+  getJobAbortSignal,
+  requestJobCancellation
+} from '../backup/cancel-state'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -51,5 +57,18 @@ describe('fetchSiteSyncJson', () => {
 
     await expect(retrySiteSyncOperation(operation)).rejects.toThrow('database is busy')
     expect(operation).toHaveBeenCalledTimes(3)
+  })
+
+  it('stops retrying immediately when the job is cancelled', async () => {
+    const jobId = 'cancel-test'
+    beginJobCancellationScope(jobId)
+    const operation = vi.fn().mockRejectedValue(new Error('connection reset'))
+    const result = retrySiteSyncOperation(operation, getJobAbortSignal(jobId))
+
+    setTimeout(() => requestJobCancellation(jobId), 25)
+
+    await expect(result).rejects.toThrow('任务已取消')
+    expect(operation).toHaveBeenCalledTimes(1)
+    endJobCancellationScope(jobId)
   })
 })

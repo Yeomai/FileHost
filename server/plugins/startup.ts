@@ -5,6 +5,9 @@ import { join } from 'node:path'
 import { runAutoDeleteCleanup } from '../utils/auto-delete'
 import { migrateLocalImagesToIndex, purgeOrphanImageIndexRows, reconcileLegacyImageKeys, repairLocalImageIndexMetadata } from '../utils/image-index'
 import { ensureDefaultBackends } from '../utils/storage-backends'
+import { cleanupLocalAtomicTempFiles } from '../utils/storage/local'
+import { cleanupExpiredSiteSyncArtifacts } from '../utils/site-sync/artifacts'
+import { recoverInterruptedBackupJobs } from '../utils/backup/jobs'
 import {
   cleanupTranscodedSources,
   killOrphanFfmpeg,
@@ -25,6 +28,37 @@ export default defineNitroPlugin(() => {
   })
 
   ensureDefaultBackends()
+
+  try {
+    const interrupted = recoverInterruptedBackupJobs()
+    if (interrupted > 0) {
+      logInfo('已将异常退出时未完成的任务标记为失败', { interrupted })
+    }
+  } catch (error) {
+    logException('恢复异常退出的备份任务失败', error)
+  }
+
+  void (async () => {
+    try {
+      const removed = await cleanupLocalAtomicTempFiles()
+      if (removed > 0) {
+        logInfo('清理过期的原子写入临时文件', { removed })
+      }
+    } catch (error) {
+      logException('清理原子写入临时文件失败', error)
+    }
+  })()
+
+  void (async () => {
+    try {
+      const result = await cleanupExpiredSiteSyncArtifacts()
+      if (result.jobs > 0) {
+        logInfo('清理过期站点同步残留', result)
+      }
+    } catch (error) {
+      logException('清理站点同步残留失败', error)
+    }
+  })()
 
   /** 清理上次异常退出留下的转码临时目录 */
   void (async () => {

@@ -53,6 +53,18 @@ export async function getBackendForKey(key: string): Promise<StorageBackend> {
   }
 }
 
+export async function getBackendById(
+  backendId: string
+): Promise<StorageBackend | null> {
+  const fromEnv = createBackendFromEnv()
+  if (fromEnv) return fromEnv.id === backendId ? fromEnv : null
+
+  ensureDefaultBackends()
+  const row = getStorageBackendRow(backendId)
+  if (!row) return null
+  return createBackendInstance(row)
+}
+
 export function getActiveBackendRow(): StorageBackendRow | null {
   const fromEnv = createBackendFromEnv()
   if (fromEnv) {

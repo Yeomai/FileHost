@@ -2,11 +2,13 @@ import { requireSiteSyncAuth } from '../../utils/access'
 import { createApiError } from '../../utils/api-error'
 import { validateStorageKey } from '../../utils/image-key'
 import { applySiteSyncMedia } from '../../utils/site-sync/apply'
+import { completeSiteSyncMediaArtifacts } from '../../utils/site-sync/artifacts'
 import type { SiteSyncMediaTransfer } from '../../utils/site-sync/protocol'
 
 interface Body {
   media?: SiteSyncMediaTransfer
   conflictMode?: 'skip' | 'overwrite'
+  jobId?: string
 }
 
 export default defineEventHandler(async (event) => {
@@ -18,7 +20,11 @@ export default defineEventHandler(async (event) => {
   }
   const conflictMode = body?.conflictMode === 'skip' ? 'skip' : 'overwrite'
   try {
-    return await applySiteSyncMedia(media, conflictMode, admin.id)
+    const result = await applySiteSyncMedia(media, conflictMode, admin.id)
+    if (body?.jobId) {
+      completeSiteSyncMediaArtifacts(body.jobId, media.key)
+    }
+    return result
   } catch (error) {
     const message = error instanceof Error ? error.message : '媒体同步失败'
     createApiError(event, 'INVALID_REQUEST', message, 400)

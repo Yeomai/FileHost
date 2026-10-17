@@ -10,6 +10,11 @@ import {
   recoverInterruptedBackupJobs,
   type BackupJob
 } from './jobs'
+import {
+  beginJobCancellationScope,
+  endJobCancellationScope,
+  requestJobCancellation
+} from './cancel-state'
 
 interface BackupRunnerState {
   running: boolean
@@ -42,11 +47,8 @@ export function cancelBackupJob(jobId: string): boolean {
   if (!job || (job.status !== 'running' && job.status !== 'pending')) {
     return false
   }
-  markJobFailed(jobId, '任务已取消')
-  if (runnerState.currentJobId === jobId) {
-    runnerState.running = false
-    runnerState.currentJobId = null
-  }
+  requestJobCancellation(jobId)
+  markJobFailed(jobId, '任务已取消', '已请求取消，正在停止…')
   return true
 }
 
@@ -59,14 +61,18 @@ export function scheduleBackupJob(
   }
   runnerState.running = true
   runnerState.currentJobId = job.id
+  beginJobCancellationScope(job.id)
   markJobRunning(job.id)
 
   setImmediate(() => {
     runner()
       .catch(() => {})
       .finally(() => {
-        runnerState.running = false
-        runnerState.currentJobId = null
+        endJobCancellationScope(job.id)
+        if (runnerState.currentJobId === job.id) {
+          runnerState.running = false
+          runnerState.currentJobId = null
+        }
       })
   })
 }

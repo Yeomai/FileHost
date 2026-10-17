@@ -57,6 +57,11 @@ const fileProgress = computed(() => {
   }
 })
 const isPull = computed(() => direction.value === 'pull')
+const canAbandon = computed(() =>
+  !props.busy
+  && Boolean(props.resumableJob)
+  && (isPull.value || Boolean(token.value.trim()))
+)
 const directionSubtitle = computed(() => (
   isPull.value
     ? t('storage.backup.siteSyncPullSubtitle')
@@ -101,6 +106,19 @@ function startNew() {
 
 function resumeSync() {
   submit(true)
+}
+
+function abandonSync() {
+  if (!canAbandon.value || !props.resumableJob) return
+  if (!window.confirm(t('storage.backup.siteSyncAbandonConfirm'))) return
+  emit('sync', {
+    targetBaseUrl: targetBaseUrl.value.trim(),
+    token: token.value.trim(),
+    conflictMode: conflictMode.value,
+    direction: direction.value,
+    abandonJobId: props.resumableJob.id
+  })
+  token.value = ''
 }
 
 function setConflictMode(mode: 'skip' | 'overwrite') {
@@ -170,6 +188,17 @@ function setDirection(value: SiteSyncDirection) {
         :disabled="!canResume"
         class="lg:col-start-3"
         @click="resumeSync"
+      />
+      <UButton
+        v-if="resumableJob"
+        :label="t('storage.backup.siteSyncAbandon')"
+        icon="i-lucide-trash-2"
+        color="error"
+        variant="outline"
+        :loading="busy"
+        :disabled="!canAbandon"
+        class="lg:col-start-3"
+        @click="abandonSync"
       />
     </div>
 

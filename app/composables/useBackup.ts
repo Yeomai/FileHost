@@ -268,7 +268,12 @@ export function useBackup() {
       )
       await refreshJobsFirstPage()
       startPolling()
-      toast.add({ title: t('storage.backup.siteSyncStarted'), color: 'success' })
+      toast.add({
+        title: body.abandonJobId
+          ? t('storage.backup.siteSyncAbandoned')
+          : t('storage.backup.siteSyncStarted'),
+        color: 'success'
+      })
       return data.job
     } catch (error: unknown) {
       handleError(error, t('storage.backup.siteSyncFailed'))

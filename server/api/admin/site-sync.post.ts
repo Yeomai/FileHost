@@ -5,6 +5,7 @@ import {
   resumeSiteSyncJob,
   startSiteSyncJob
 } from '../../utils/backup/runner'
+import { abandonSiteSyncJob } from '../../utils/site-sync/abandon'
 
 interface SiteSyncBody {
   targetBaseUrl?: string
@@ -12,6 +13,7 @@ interface SiteSyncBody {
   conflictMode?: 'skip' | 'overwrite'
   direction?: 'push' | 'pull'
   resumeJobId?: string
+  abandonJobId?: string
 }
 
 export default defineEventHandler(async (event) => {
@@ -22,11 +24,15 @@ export default defineEventHandler(async (event) => {
   const conflictMode = body?.conflictMode === 'skip' ? 'skip' : 'overwrite'
   const direction = body?.direction === 'pull' ? 'pull' : 'push'
 
-  if (!token) {
+  if (!token && !body?.abandonJobId) {
     createApiError(event, 'INVALID_REQUEST', '请输入目标站点管理员 API Token', 400)
   }
 
   try {
+    if (body?.abandonJobId) {
+      const job = await abandonSiteSyncJob(body.abandonJobId, token, user.id)
+      return { job: serializeBackupJob(job) }
+    }
     let job
     if (body?.resumeJobId) {
       job = resumeSiteSyncJob(body.resumeJobId, token, user.id)
@@ -53,6 +59,14 @@ export default defineEventHandler(async (event) => {
     }
     if (error instanceof Error && error.message === 'SITE_SYNC_JOB_NOT_RESUMABLE') {
       createApiError(event, 'INVALID_REQUEST', '该同步任务无法继续', 400)
+    }
+    if (body?.abandonJobId) {
+      createApiError(
+        event,
+        'INVALID_REQUEST',
+        error instanceof Error ? error.message : '放弃同步失败',
+        400
+      )
     }
     throw error
   }
