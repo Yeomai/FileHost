@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   cleanupExpiredHlsDownloads,
+  buildThumbnailFfmpegArgs,
   DEFAULT_TRANSCODE_CONCURRENCY,
   DEFAULT_TRANSCODE_PRESET,
   DEFAULT_TRANSCODE_THREADS,
@@ -15,7 +16,8 @@ import {
   parseTranscodePreset,
   setTranscodeSettings,
   summarizeTranscodeFailure,
-  thumbKeyFor
+  thumbKeyFor,
+  THUMBNAIL_FFMPEG_TIMEOUT_MS
 } from './transcode'
 import { isVideoSidecarKey, mediaTypeForKey } from './image-key'
 
@@ -25,6 +27,17 @@ describe('hlsPlaylistKey', () => {
       .toBe('videos/2026/10/abc123/index.m3u8')
     expect(hlsPlaylistKey('videos/abc123.mkv'))
       .toBe('videos/abc123/index.m3u8')
+  })
+})
+
+describe('thumbnail ffmpeg args', () => {
+  it('limits thumbnail extraction to one worker and one filter thread', () => {
+    const args = buildThumbnailFfmpegArgs('/tmp/input.mp4', '/tmp/thumb.png', 1)
+    expect(args.slice(args.indexOf('-threads'), args.indexOf('-threads') + 2))
+      .toEqual(['-threads', '1'])
+    expect(args.slice(args.indexOf('-filter_threads'), args.indexOf('-filter_threads') + 2))
+      .toEqual(['-filter_threads', '1'])
+    expect(THUMBNAIL_FFMPEG_TIMEOUT_MS).toBe(10_000)
   })
 })
 

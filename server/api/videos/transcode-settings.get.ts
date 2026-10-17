@@ -1,4 +1,5 @@
 import { requireUserAuth } from '../../utils/access'
+import { detectSystemMemory } from '../../utils/system-resources'
 import {
   getTranscodeSettings,
   MAX_TRANSCODE_CONCURRENCY,
@@ -11,12 +12,16 @@ import {
 export default defineEventHandler(async (event) => {
   await requireUserAuth(event)
 
+  const memory = detectSystemMemory()
   return {
     ...getTranscodeSettings(),
     maxConcurrency: MAX_TRANSCODE_CONCURRENCY,
     maxThreads: MAX_TRANSCODE_THREADS,
     minBitratePercent: MIN_TRANSCODE_BITRATE_PERCENT,
     maxBitratePercent: MAX_TRANSCODE_BITRATE_PERCENT,
-    presets: TRANSCODE_PRESETS
+    presets: TRANSCODE_PRESETS,
+    memoryBytes: memory.totalBytes,
+    lowMemoryThresholdBytes: memory.thresholdBytes,
+    lowMemory: memory.lowMemory
   }
 })

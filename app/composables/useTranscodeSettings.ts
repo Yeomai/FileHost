@@ -8,6 +8,9 @@ interface TranscodeSettingsResponse {
   minBitratePercent: number
   maxBitratePercent: number
   presets: string[]
+  memoryBytes: number
+  lowMemoryThresholdBytes: number
+  lowMemory: boolean
 }
 
 /** 服务端转码参数：并发任务数与单任务 CPU 核心数（仅管理员可改） */
@@ -27,6 +30,9 @@ export function useTranscodeSettings() {
   const maxBitratePercent = ref(100)
   const loaded = ref(false)
   const hydrated = ref(false)
+  const memoryBytes = ref(0)
+  const lowMemoryThresholdBytes = ref(2 * 1024 * 1024 * 1024)
+  const lowMemory = ref(false)
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -41,6 +47,10 @@ export function useTranscodeSettings() {
     if (data.presets?.length) presets.value = data.presets
     maxConcurrency.value = data.maxConcurrency
     maxThreads.value = data.maxThreads
+    memoryBytes.value = data.memoryBytes ?? 0
+    lowMemoryThresholdBytes.value = data.lowMemoryThresholdBytes
+      ?? 2 * 1024 * 1024 * 1024
+    lowMemory.value = data.lowMemory === true
     loaded.value = true
     nextTick(() => {
       hydrated.value = true
@@ -108,6 +118,9 @@ export function useTranscodeSettings() {
     presets,
     maxConcurrency,
     maxThreads,
+    memoryBytes,
+    lowMemoryThresholdBytes,
+    lowMemory,
     loaded,
     load
   }

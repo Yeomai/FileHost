@@ -308,6 +308,8 @@
     "qualityLow": "有损压缩",
     "convenience": "便捷功能",
     "videoProcessing": "视频处理",
+    "lowMemoryTranscodeTitle": "低内存服务器提示",
+    "lowMemoryTranscodeHint": "检测到当前机器内存约 {memory} GB，低于 2 GB。暂不建议开启 HLS 转码，以免转码过程导致内存不足或服务不稳定。",
     "transcodeToHls": "转码成 m3u8",
     "transcodeToHlsHint": "自动切片为 HLS，会占用 CPU。",
     "concurrentHint": "同时转码数",

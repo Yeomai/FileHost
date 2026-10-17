@@ -308,6 +308,8 @@
     "qualityLow": "Lossy",
     "convenience": "Convenience",
     "videoProcessing": "Video processing",
+    "lowMemoryTranscodeTitle": "Low-memory server warning",
+    "lowMemoryTranscodeHint": "This machine has about {memory} GB of memory, below 2 GB. HLS transcoding is not recommended for now because it may exhaust memory or make the service unstable.",
     "transcodeToHls": "Transcode to m3u8",
     "transcodeToHlsHint": "Segment into HLS, uses extra CPU.",
     "concurrentHint": "at a time",

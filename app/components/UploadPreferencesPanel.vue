@@ -31,6 +31,11 @@ const gridClass = computed(() => {
 })
 
 const { t } = useI18n()
+const {
+  lowMemory,
+  memoryBytes,
+  load: loadTranscodeSettings
+} = useTranscodeSettings()
 
 const {
   userSettings,
@@ -52,6 +57,12 @@ const clientQualityLevel = computed(() => {
   return t('preferences.qualityLow')
 })
 
+const memoryGb = computed(() => (
+  memoryBytes.value > 0
+    ? (memoryBytes.value / (1024 * 1024 * 1024)).toFixed(1)
+    : '—'
+))
+
 function setCopyFormat(value: 'url' | 'markdown' | 'html' | 'bbcode') {
   copyFormat.value = value
 }
@@ -64,6 +75,7 @@ function onClientQualityInput(event: Event) {
 onMounted(() => {
   loadPreferences()
   void loadUserSettings()
+  void loadTranscodeSettings()
 })
 </script>
 
@@ -169,6 +181,15 @@ onMounted(() => {
           <h3 class="text-sm font-semibold">
             {{ t('preferences.videoProcessing') }}
           </h3>
+
+          <UAlert
+            v-if="lowMemory"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+            :title="t('preferences.lowMemoryTranscodeTitle')"
+            :description="t('preferences.lowMemoryTranscodeHint', { memory: memoryGb })"
+          />
 
           <label class="flex cursor-pointer items-start gap-2.5">
             <UCheckbox

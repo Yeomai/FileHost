@@ -209,32 +209,67 @@ export function hlsSegmentNames(playlistText: string): string[] {
   return [...names]
 }
 
+export function buildThumbnailFfmpegArgs(
+  inputPath: string,
+  outputPath: string,
+  seek: number
+): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-threads', '1',
+    '-filter_threads', '1',
+    '-y',
+    '-ss', String(seek),
+    '-i', inputPath,
+    '-frames:v', '1',
+    '-vf', 'scale=640:-2',
+    '-c:v', 'png',
+    outputPath
+  ]
+}
+
+export const THUMBNAIL_FFMPEG_TIMEOUT_MS = 10_000
+
+class ThumbnailFfmpegTimeoutError extends Error {
+  constructor() {
+    super(`缩略图生成超时（${THUMBNAIL_FFMPEG_TIMEOUT_MS / 1000} 秒）`)
+    this.name = 'ThumbnailFfmpegTimeoutError'
+  }
+}
+
 function runThumbFfmpeg(inputPath: string, outputPath: string, seek: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffmpeg', [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-y',
-      '-ss', String(seek),
-      '-i', inputPath,
-      '-frames:v', '1',
-      '-vf', 'scale=640:-2',
-      '-c:v', 'png',
-      outputPath
-    ], { windowsHide: true })
+    const child = spawn(
+      'ffmpeg',
+      buildThumbnailFfmpegArgs(inputPath, outputPath, seek),
+      { windowsHide: true }
+    )
 
     let stderr = ''
+    let finished = false
+    const finish = (error?: Error) => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      if (error) reject(error)
+      else resolve()
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      finish(new ThumbnailFfmpegTimeoutError())
+    }, THUMBNAIL_FFMPEG_TIMEOUT_MS)
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk)
     })
-    child.on('error', reject)
+    child.on('error', error => finish(error))
     child.on('close', (code) => {
       if (code === 0) {
-        resolve()
+        finish()
         return
       }
       const detail = stderr.trim().split('\n').filter(Boolean).pop()
-      reject(new Error(detail || `ffmpeg 退出码 ${code}`))
+      finish(new Error(detail || `ffmpeg 退出码 ${code}`))
     })
   })
 }
@@ -259,7 +294,8 @@ export async function generateVideoThumbnail(videoKey: string): Promise<string |
 
     try {
       await runThumbFfmpeg(inputPath, framePath, 1)
-    } catch {
+    } catch (error) {
+      if (error instanceof ThumbnailFfmpegTimeoutError) throw error
       await runThumbFfmpeg(inputPath, framePath, 0)
     }
 
