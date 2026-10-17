@@ -24,6 +24,7 @@ Version history and notable changes. The full log is also in the repo root [CHAN
 ### Fixed
 
 - Stale recent tasks after clearing storage and media logic that only covered images
+- Site URL being cleared when separate media domains were disabled
 - Recovery fallback for interrupted site synchronization
 
 ## [1.4.4] — 2026-10-10

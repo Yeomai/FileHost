@@ -231,10 +231,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (wantSeparation === false) {
-    nextSite = ''
-  }
-
   if (body.domainSeparation !== undefined) {
     setSetting(SETTINGS_DOMAIN_SEPARATION, wantSeparation ? 'true' : 'false')
   }
