@@ -31,7 +31,11 @@ export default defineNitroPlugin(() => {
     try {
       const entries = await fs.readdir(tmpdir(), { withFileTypes: true })
       for (const entry of entries) {
-        if (!entry.isDirectory() || !entry.name.startsWith('pichost-hls-')) continue
+        if (
+          !entry.isDirectory()
+          || !entry.name.startsWith('pichost-hls-')
+          || entry.name.startsWith('pichost-hls-download-')
+        ) continue
         await fs.rm(join(tmpdir(), entry.name), { recursive: true, force: true })
           .catch(() => {})
       }

@@ -131,6 +131,11 @@ describe('isVideoExtension', () => {
     expect(isVideoExtension('mkv')).toBe(true)
   })
 
+  it('rejects HLS sidecars from the user upload allowlist', () => {
+    expect(isVideoExtension('ts')).toBe(false)
+    expect(isVideoExtension('m3u8')).toBe(false)
+  })
+
   it('rejects non-video extensions', () => {
     expect(isVideoExtension('png')).toBe(false)
     expect(isVideoExtension('pdf')).toBe(false)
@@ -153,6 +158,8 @@ describe('validateVideoKey', () => {
 
   it('is covered by validateStorageKey', () => {
     expect(validateStorageKey('videos/2026/10/a.mp4')).toBe(true)
+    expect(validateStorageKey('videos/2026/10/a/index.m3u8')).toBe(true)
+    expect(validateStorageKey('videos/2026/10/a/seg000.ts')).toBe(true)
   })
 })
 

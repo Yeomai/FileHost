@@ -8,6 +8,7 @@
     "loadingSession": "Verifying session…",
     "save": "Save",
     "cancel": "Cancel",
+    "continue": "Continue",
     "copy": "Copy",
     "delete": "Delete",
     "edit": "Edit",
@@ -546,7 +547,20 @@
     "storageId": "Storage ID",
     "storageType": "Storage type",
     "badgeLocal": "Local",
-    "defaultStorageTip": "Default storage: new uploads are saved to “{name}”. Use “Set as default” on another backend to change this.",
+    "defaultStorageTip": "All new images, videos, and files are saved to “{name}” by default. Use “Set as default” on another backend to change this.",
+    "clearStorage": "Clear storage",
+    "clearStorageTitle": "Clear my storage",
+    "clearStorageDescription": "Permanently delete every image, video, file, and cache uploaded by the current account without affecting other users.",
+    "clearStorageWarning": "High-risk operation: this will clear all files and caches in storage and cannot be undone!",
+    "clearStorageScope": "Only data and files owned by the current signed-in user are removed. Other users, account settings, storage configuration, and site backups are not affected.",
+    "clearStorageFinalTitle": "Final confirmation",
+    "clearStorageInstruction": "Type “I confirm” to continue. The operation cannot be cancelled or undone once started.",
+    "clearStoragePlaceholder": "I confirm",
+    "clearStoragePhrase": "I confirm",
+    "clearStorageConfirm": "Permanently clear",
+    "clearStorageSuccess": "Cleared {files} files and {cache} temporary caches; storage space has been released",
+    "clearStoragePartial": "{failed}/{total} files failed to clear; please retry",
+    "clearStorageFailed": "Failed to clear storage; please try again",
     "supportedTitle": "Supported backends",
     "supportedSubtitle": "PicHost supports multiple storage backends for different scenarios",
     "supportedLocalDesc": "Ideal for small deployments and personal use",
@@ -554,7 +568,7 @@
     "supportedS3Title": "S3 compatible",
     "supportedS3Desc": "Storage services compatible with the Amazon S3 API",
     "supportedTelegramDesc": "Store images in a Telegram channel or group; good for light unlimited storage",
-    "footerTip": "The default backend receives all new uploads",
+    "footerTip": "The default backend receives all new images, videos, and files",
     "statTotal": "Total",
     "statUsed": "Used",
     "statFree": "Free",
@@ -585,28 +599,28 @@
     "manageStorageHint": "Configure R2 / S3 / COS backends and URL serving",
     "backup": {
       "sectionTitle": "Backup & migration",
-      "sectionSubtitle": "Full-site backup, restore, and cross-backend image migration",
+      "sectionSubtitle": "Full-site backup, restore, and cross-backend file migration",
       "siteTitle": "Site backup & restore",
       "siteSubtitle": "For migration, disaster recovery, and full-site restore",
-      "siteFooterHint": "Backups include the database and images, not plain-text secret_json.",
+      "siteFooterHint": "Backups include the database and all files, not plain-text secret_json.",
       "exportTitle": "Create site backup",
-      "exportSubtitle": "Package the database and all images as .phost.tar.gz",
+      "exportSubtitle": "Package the database and all files as .phost.tar.gz",
       "exportAction": "Start backup",
       "exportStarted": "Backup job started",
       "exportFailed": "Failed to start backup",
       "exportPathHint": "Exports are saved under data/backups/",
       "exportIncludesTitle": "Package includes",
       "exportIncludesDb": "Database snapshot (pichost.db)",
-      "exportIncludesImages": "All image files ({count})",
+      "exportIncludesImages": "All images, videos, and files ({count})",
       "exportExcludesSecrets": "Excludes plain-text secret.json for cloud storage",
       "exportConcurrencyHint": "Only one backup or migration job can run at a time",
       "estimateLoading": "Estimating size…",
-      "estimateImageCountLabel": "Images",
+      "estimateImageCountLabel": "Files",
       "estimatePackageSizeLabel": "Est. package",
       "estimateDatabaseSnapshotLabel": "Database snapshot",
       "estimateStoragePathLabel": "Save location",
       "estimateStoragePathValue": "data/backups/",
-      "estimateImages": "{count} images · {size}",
+      "estimateImages": "{count} files · {size}",
       "estimateDatabase": "Database ~{size}",
       "estimateTotal": "Total ~{size}",
       "restoreTitle": "Restore from backup",
@@ -623,30 +637,30 @@
       "restoreConfirm": "Confirm restore",
       "restoreConfirmTitle": "Confirm site restore",
       "restoreConfirmSource": "Source: {name}",
-      "restoreOverwriteWarning": "Overwrite mode replaces conflicting images and the database. Ensure you have a current backup.",
+      "restoreOverwriteWarning": "Overwrite mode replaces conflicting files and the database. Ensure you have a current backup.",
       "restoreSelectRequired": "Select or upload a backup file",
       "restoreStarted": "Restore job started",
       "restoreFailed": "Restore failed",
       "conflictMode": "Conflict policy",
-      "conflictSkip": "Skip existing images",
-      "conflictOverwrite": "Overwrite existing images and database",
+      "conflictSkip": "Skip existing files",
+      "conflictOverwrite": "Overwrite existing files and database",
       "syncTitle": "Cross-backend sync",
       "syncMigrateTitle": "Cross-backend migration",
-      "syncMigrateSubtitle": "Migrate images between configured backends",
-      "syncSubtitle": "Copy images between configured backends and update the index",
+      "syncMigrateSubtitle": "Migrate files between configured backends",
+      "syncSubtitle": "Copy files between configured backends and update the index",
       "syncFrom": "Source backend",
       "syncTo": "Target backend",
-      "syncPendingImages": "Images to migrate",
+      "syncPendingImages": "Files to migrate",
       "syncPendingSize": "Est. size",
       "syncIncludesTitle": "What sync does",
-      "syncIncludesCopy": "Copy image files from source to target backend",
+      "syncIncludesCopy": "Copy images, videos, and files from source to target backend",
       "syncIncludesIndex": "Update storage_backend_id in the index",
       "syncIncludesConfig": "Site settings and other backends are unchanged",
       "syncDryRun": "Dry run only",
       "syncSetDefaultAfter": "Set target as default after migration",
       "syncStartMigrate": "Start migration",
       "syncPreviewOnly": "Preview",
-      "syncFooterHint": "Only image files and index are migrated; site settings are unchanged.",
+      "syncFooterHint": "Only files and index are migrated; site settings are unchanged.",
       "syncDeleteSource": "Delete source files after sync",
       "syncSetDefault": "Set target as default after sync",
       "syncPreview": "Preview & start",
@@ -658,8 +672,8 @@
       "syncStarted": "Sync job started",
       "syncFailed": "Sync failed",
       "previewFailed": "Preview failed",
-      "previewImages": "Images",
-      "previewNew": "New images",
+      "previewImages": "Files",
+      "previewNew": "New files",
       "previewConflicts": "Conflicts",
       "previewCreated": "Backup created",
       "previewSize": "Data size",
@@ -672,6 +686,8 @@
       "colType": "Type",
       "colStatus": "Status",
       "colProgress": "Progress",
+      "progressUnitMedia": "media records",
+      "progressUnitObjects": "storage objects",
       "colMessage": "Message",
       "colCreated": "Created",
       "colActions": "Actions",
@@ -691,8 +707,8 @@
       "jobRunning": "Another job is already running. Try again later.",
       "migrateIn": "Migrate in",
       "migrateOut": "Migrate out",
-      "migrateInHint": "Copy images from the default backend to this one",
-      "migrateOutHint": "Move images out of this backend",
+      "migrateInHint": "Copy files from the default backend to this one",
+      "migrateOutHint": "Move files out of this backend",
       "syncDraftApplied": "Sync form prefilled — review and start when ready",
       "syncNeedTwoBackends": "At least two storage backends are required to sync",
       "selectBackend": "Select backend",
@@ -869,7 +885,7 @@
     "envOverrideTitle": "Token overridden by environment",
     "envOverrideDesc": "Restart after changing API_UPLOAD_TOKEN; cannot regenerate in UI.",
     "personalTitle": "Personal API token",
-    "personalDesc": "For your scripts only; uploads belong to your account.",
+    "personalDesc": "For your scripts only; uploaded images, videos and files belong to your account.",
     "notConfiguredTitle": "No token configured",
     "notConfiguredDesc": "A token is created automatically on first visit, or click Regenerate.",
     "regenerate": "Regenerate",
@@ -911,6 +927,8 @@
     "responseExample": "Response example",
     "categories": {
       "image": "Images",
+      "video": "Videos",
+      "file": "Files",
       "extension": "Plugins",
       "system": "System"
     },
@@ -935,6 +953,47 @@
       "batchDelete": {
         "keys": "Array of image keys to delete"
       },
+      "videoUpload": {
+        "video": "Primary video field; max 500 MB per file",
+        "file": "Compatibility field, can replace video",
+        "files": "Compatibility field for multiple videos",
+        "transcode": "Set to 1 to transcode to HLS asynchronously; otherwise keep the source and generate a thumbnail",
+        "transcodePreset": "Optional preset: copy, veryfast, medium, slow, or compress (target bitrate)",
+        "transcodeBitratePercent": "Used by compress only; target bitrate as 10–100% of the source. Uses the current server setting when omitted",
+        "token": "Optional; the API token can also be sent with the Auth-Token header"
+      },
+      "fileUpload": {
+        "file": "Primary file field; max 100 MB per file. HTML / HTM / SVG are blocked",
+        "files": "Compatibility field for multiple files",
+        "token": "Optional; the API token can also be sent with the Auth-Token header"
+      },
+      "mediaList": {
+        "kindVideo": "Set to video to list videos",
+        "kindFile": "Set to file to list files",
+        "page": "Page number, starts at 1",
+        "limit": "Page size, default 20, max 100",
+        "q": "Search by filename or path",
+        "processing": "Video only; set to 1 to return queued or running transcodes",
+        "uploadSource": "Upload source: web or api",
+        "tagIds": "Filter by comma-separated tag IDs",
+        "tagMode": "Use or or and for multiple tags; default is or",
+        "untagged": "Set to 1 to return only untagged items"
+      },
+      "mediaSearch": {
+        "q": "Search keyword matched against filename or storage path; required"
+      },
+      "videoDelete": {
+        "key": "Video storage path; also removes its thumbnail and HLS artifacts"
+      },
+      "videoBatchDelete": {
+        "keys": "Array of video keys; up to 100 per request. Thumbnails and HLS artifacts are also removed"
+      },
+      "fileDelete": {
+        "key": "File storage path, e.g. files/2026/10/xxx.pdf"
+      },
+      "fileBatchDelete": {
+        "keys": "Array of file keys; up to 100 per request"
+      },
       "twikoo": {
         "image": "Image file",
         "token": "API token"
@@ -955,9 +1014,9 @@
       "sendFailed": "Request failed",
       "networkError": "Network error or unreachable",
       "notesTitle": "Notes",
-      "noteSuccess": "200 means success with JSON body",
+      "noteSuccess": "200 means success with a JSON body",
       "noteError": "4xx / 5xx means failure; check error field",
-      "noteLimit": "Upload limit: up to 10 files, 10 MB each"
+      "noteLimit": "Upload limit: up to 10 files; videos up to 500 MB each, files up to 100 MB each"
     },
     "docs": {
       "upload": {
@@ -979,6 +1038,46 @@
       "batchDelete": {
         "title": "Batch delete",
         "desc": "Delete multiple images; request body is a keys array."
+      },
+      "videoUpload": {
+        "title": "Upload videos",
+        "desc": "Upload MP4 / WebM / MOV / MKV and more, up to 10 files and 500 MB each. A thumbnail is generated independently; transcode=1 starts asynchronous HLS transcoding."
+      },
+      "videoList": {
+        "title": "List videos",
+        "desc": "Use kind=video to list videos, including untranscoded, completed and failed items. processing=1 returns only queued or running jobs."
+      },
+      "videoDelete": {
+        "title": "Delete video",
+        "desc": "Delete a video by key, including its thumbnail and generated HLS playlist and segments."
+      },
+      "videoSearch": {
+        "title": "Search videos",
+        "desc": "Search by filename or storage path with pagination, backend, upload source and tag filters; q is required."
+      },
+      "videoBatchDelete": {
+        "title": "Batch delete videos",
+        "desc": "Delete up to 100 videos at once, including each video's thumbnail, HLS playlist and segments."
+      },
+      "fileUpload": {
+        "title": "Upload files",
+        "desc": "Upload any file, up to 10 files and 100 MB each. HTML, HTM and SVG are blocked."
+      },
+      "fileList": {
+        "title": "List files",
+        "desc": "Use kind=file to paginate file-bed entries with search, storage, source and tag filters."
+      },
+      "fileDelete": {
+        "title": "Delete file",
+        "desc": "Delete one file by its storage key. This action cannot be undone."
+      },
+      "fileSearch": {
+        "title": "Search files",
+        "desc": "Search by filename or storage path with kind=file, pagination, backend, upload source and tag filters."
+      },
+      "fileBatchDelete": {
+        "title": "Batch delete files",
+        "desc": "Delete up to 100 files at once. The response reports deleted and failed keys separately."
       },
       "twikoo": {
         "title": "Twikoo-compatible upload",
@@ -1058,6 +1157,14 @@
       "previewKey": "Video path",
       "transcodeNone": "Not transcoded",
       "transcodeDone": "Done (m3u8)",
+      "transcodeErrorFfmpegMissing": "No FFmpeg",
+      "transcodeErrorPermissionDenied": "File permission denied",
+      "transcodeErrorUnknown": "Unknown reason",
+      "downloadMp4": "Download MP4",
+      "downloadMp4Title": "Download MP4 video",
+      "downloadMp4Confirm": "The video segments will be merged into an MP4 file. Continue?",
+      "downloadMp4Working": "Merging video segments, please wait…",
+      "downloadMp4Failed": "Video merge failed. Please try again later.",
       "uploadTitle": "Drop videos here to upload",
       "uploadHint": "or click to choose video files, up to 10 at a time",
       "uploadFormats": "MP4 / WebM / MOV / MKV and more, up to 100MB per file",

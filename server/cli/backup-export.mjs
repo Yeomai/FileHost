@@ -11,9 +11,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadServerModule } from './backup-cli-loader.mjs'
 
-const { ensureBackupSchema } = loadServerModule('utils/backup/schema.ts')
-const { createBackupJob, getBackupJob } = loadServerModule('utils/backup/jobs.ts')
-const { runFullExportJob } = loadServerModule('utils/backup/full-export.ts')
+const {
+  ensureBackupSchema,
+  createBackupJob,
+  getBackupJob,
+  runFullExportJob
+} = loadServerModule('cli/backup-runtime.ts')
 
 function readAppVersion() {
   try {

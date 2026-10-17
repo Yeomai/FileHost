@@ -1,18 +1,22 @@
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   createBackendInstance,
   getStorageBackendRow,
   setDefaultBackend
 } from '../storage-backends'
 import {
-  getImageIndexAsStored,
+  getImageIndexRow,
   listImageIndexRowsByBackend,
   updateImageBackendId
 } from '../image-index'
-import { createImageStream } from '../storage'
+import { contentTypeFromKey } from '../content-type'
+import { mediaTypeForKey } from '../image-key'
+import type { ImageIndexRow } from '../image-index'
+import type { StorageBackend } from '../storage/types'
 import { getBackupJob, markJobDone, markJobFailed, updateBackupJob } from './jobs'
 import { getBackupStagingDir } from './paths'
+import { collectMediaAssetKeys } from '../media-assets'
 
 export interface BackendSyncOptions {
   fromBackendId: string
@@ -63,6 +67,44 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
+async function syncMediaRow(
+  row: ImageIndexRow,
+  fromBackend: StorageBackend,
+  toBackend: StorageBackend,
+  deleteSource: boolean
+): Promise<void> {
+  const keys = await collectMediaAssetKeys(row, fromBackend)
+  if (!keys.length) throw new Error('没有可同步的文件对象')
+
+  for (const key of keys) {
+    const stored = await fromBackend.head(key)
+    if (!stored) throw new Error(`源文件不存在：${key}`)
+
+    const bytes = await streamToBuffer(await fromBackend.createStream(key))
+    const isPrimary = key === row.key
+    await toBackend.put(key, bytes, {
+      originalName: isPrimary ? row.original_name : basename(key),
+      uploadedAt: row.uploaded_at,
+      contentType: isPrimary ? row.content_type : contentTypeFromKey(key),
+      size: bytes.length,
+      userId: row.user_id,
+      mediaType: isPrimary ? mediaTypeForKey(key) : 'video'
+    })
+
+    if (!await toBackend.head(key)) {
+      throw new Error(`目标后端写入校验失败：${key}`)
+    }
+  }
+
+  updateImageBackendId(row.key, toBackend.id)
+
+  if (deleteSource) {
+    for (const key of keys) {
+      await fromBackend.delete(key)
+    }
+  }
+}
+
 export async function runBackendSyncJob(
   jobId: string,
   options: BackendSyncOptions
@@ -88,32 +130,13 @@ export async function runBackendSyncJob(
   updateBackupJob(jobId, {
     total: rows.length,
     progress: 0,
-    message: '正在同步图片…'
+    message: '正在同步文件…'
   })
 
   let processed = 0
   for (const row of rows) {
     try {
-      const stream = await createImageStream(row.key)
-      const bytes = await streamToBuffer(stream)
-      await toBackend.put(row.key, bytes, {
-        originalName: row.original_name,
-        uploadedAt: row.uploaded_at,
-        contentType: row.content_type,
-        size: row.size,
-        userId: row.user_id
-      })
-
-      const head = await toBackend.head(row.key)
-      if (!head) {
-        throw new Error('目标后端写入校验失败')
-      }
-
-      updateImageBackendId(row.key, options.toBackendId)
-
-      if (options.deleteSource) {
-        await fromBackend.delete(row.key)
-      }
+      await syncMediaRow(row, fromBackend, toBackend, Boolean(options.deleteSource))
     } catch (error) {
       failedKeys.push(row.key)
       await fs.mkdir(join(failedLogPath, '..'), { recursive: true }).catch(() => {})
@@ -136,7 +159,7 @@ export async function runBackendSyncJob(
   }
 
   if (failedKeys.length > 0) {
-    markJobFailed(jobId, `${failedKeys.length} 张图片同步失败`, `部分失败：${failedKeys.length}/${rows.length}`)
+    markJobFailed(jobId, `${failedKeys.length} 个文件同步失败`, `部分失败：${failedKeys.length}/${rows.length}`)
     updateBackupJob(jobId, {
       payload: { failedKeys, failedLogPath, preview }
     })
@@ -178,22 +201,10 @@ export async function retryFailedBackendSync(jobId: string): Promise<void> {
 
   const stillFailed: string[] = []
   for (const key of keys) {
-    const row = getImageIndexAsStored(key)
+    const row = getImageIndexRow(key)
     if (!row) continue
     try {
-      const stream = await createImageStream(key)
-      const bytes = await streamToBuffer(stream)
-      await toBackend.put(key, bytes, {
-        originalName: row.originalName,
-        uploadedAt: row.uploadedAt,
-        contentType: row.contentType,
-        size: row.size,
-        userId: row.userId
-      })
-      updateImageBackendId(key, toBackendId)
-      if (deleteSource) {
-        await fromBackend.delete(key)
-      }
+      await syncMediaRow(row, fromBackend, toBackend, deleteSource)
     } catch {
       stillFailed.push(key)
     }
@@ -205,7 +216,7 @@ export async function retryFailedBackendSync(jobId: string): Promise<void> {
       stillFailed.map(key => `${key}\tretry failed\n`).join(''),
       'utf8'
     )
-    throw new Error(`仍有 ${stillFailed.length} 张图片同步失败`)
+    throw new Error(`仍有 ${stillFailed.length} 个文件同步失败`)
   }
 
   await fs.rm(failedLogPath, { force: true }).catch(() => {})

@@ -1,13 +1,20 @@
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  cleanupExpiredHlsDownloads,
   DEFAULT_TRANSCODE_CONCURRENCY,
   DEFAULT_TRANSCODE_PRESET,
   DEFAULT_TRANSCODE_THREADS,
   getTranscodeConcurrency,
   getTranscodeSettings,
+  hlsSegmentNames,
   hlsPlaylistKey,
+  markHlsDownloadForCleanup,
   parseTranscodePreset,
   setTranscodeSettings,
+  summarizeTranscodeFailure,
   thumbKeyFor
 } from './transcode'
 import { isVideoSidecarKey, mediaTypeForKey } from './image-key'
@@ -39,11 +46,61 @@ describe('isVideoSidecarKey', () => {
   })
 })
 
+describe('hlsSegmentNames', () => {
+  it('returns unique relative segment names and ignores tags', () => {
+    expect(hlsSegmentNames([
+      '#EXTM3U',
+      '#EXTINF:6,',
+      'seg000.ts',
+      '#EXTINF:6,',
+      'seg001.ts',
+      'seg000.ts'
+    ].join('\n'))).toEqual(['seg000.ts', 'seg001.ts'])
+  })
+
+  it('ignores absolute and traversal paths', () => {
+    expect(hlsSegmentNames([
+      '../secret.ts',
+      'https://example.com/video.ts',
+      'folder/seg.ts',
+      'seg.ts'
+    ].join('\n'))).toEqual(['seg.ts'])
+  })
+})
+
+describe('cleanupExpiredHlsDownloads', () => {
+  it('keeps fresh downloads and removes files after their marker expires', async () => {
+    const now = Date.now()
+    const fresh = await fs.mkdtemp(join(tmpdir(), 'pichost-hls-download-fresh-'))
+    const expired = await fs.mkdtemp(join(tmpdir(), 'pichost-hls-download-expired-'))
+
+    await markHlsDownloadForCleanup(fresh, now + 60_000)
+    await markHlsDownloadForCleanup(expired, now - 1)
+    await cleanupExpiredHlsDownloads(now)
+
+    await expect(fs.access(fresh)).resolves.toBeUndefined()
+    await expect(fs.access(expired)).rejects.toThrow()
+    await fs.rm(fresh, { recursive: true, force: true })
+  })
+})
+
 describe('mediaTypeForKey', () => {
   it('maps folders to media types', () => {
     expect(mediaTypeForKey('images/2026/10/a.webp')).toBe('image')
     expect(mediaTypeForKey('videos/2026/10/a.mp4')).toBe('video')
     expect(mediaTypeForKey('files/2026/10/a.pdf')).toBe('file')
+  })
+})
+
+describe('summarizeTranscodeFailure', () => {
+  it('recognizes a missing FFmpeg binary', () => {
+    expect(summarizeTranscodeFailure(new Error('spawn ffmpeg ENOENT')))
+      .toBe('ffmpeg-missing')
+  })
+
+  it('maps other FFmpeg errors to unknown', () => {
+    const error = new Error(`first line\n${'invalid data '.repeat(20)}`)
+    expect(summarizeTranscodeFailure(error)).toBe('unknown')
   })
 })
 

@@ -16,11 +16,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   'play': []
   'delete': []
+  'download': []
   'update:selected': [value: boolean]
 }>()
 
 const { formatFileSize } = useFileSize()
 const { t, locale } = useI18n()
+const transcodeFailureLabel = useTranscodeFailureLabel()
 
 /** 转码完成后按 HLS 播放列表展示 */
 const displayName = computed(() => {
@@ -37,34 +39,15 @@ const uploadedLabel = computed(() => {
     return props.item.uploadedAt
   }
 })
-
-const thumbFailed = ref(false)
-
-watch(() => props.item.thumbUrl, () => {
-  thumbFailed.value = false
-})
 </script>
 
 <template>
   <div class="flex flex-col overflow-hidden rounded-xl border border-default bg-elevated">
     <div class="relative aspect-video shrink-0 overflow-hidden bg-muted">
-      <img
-        v-if="item.thumbUrl && !thumbFailed"
+      <VideoThumbnail
         :src="thumbLink"
         :alt="displayName"
-        loading="lazy"
-        class="size-full object-cover object-center"
-        @error="thumbFailed = true"
-      >
-      <div
-        v-else
-        class="flex size-full items-center justify-center"
-      >
-        <UIcon
-          name="i-lucide-film"
-          class="size-10 text-dimmed"
-        />
-      </div>
+      />
 
       <button
         type="button"
@@ -108,8 +91,10 @@ watch(() => props.item.thumbUrl, () => {
           color="error"
           variant="solid"
           size="xs"
+          class="max-w-48 truncate"
+          :title="transcodeFailureLabel(item.transcodeError)"
         >
-          {{ t('library.transcodeFailed') }}
+          {{ transcodeFailureLabel(item.transcodeError) }}
         </UBadge>
       </div>
     </div>
@@ -161,6 +146,15 @@ watch(() => props.item.thumbUrl, () => {
         target="_blank"
         rel="noopener"
         :aria-label="t('files.download')"
+      />
+      <UButton
+        v-else-if="item.hlsUrl"
+        icon="i-lucide-download"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        :aria-label="t('library.video.downloadMp4')"
+        @click="emit('download')"
       />
       <UButton
         icon="i-lucide-trash-2"

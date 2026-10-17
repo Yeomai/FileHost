@@ -53,6 +53,12 @@ function progressPercent(job: BackupJobItem): number {
   return Math.min(100, Math.round((job.progress / job.total) * 100))
 }
 
+function progressUnit(job: BackupJobItem): string {
+  return job.type === 'full_restore'
+    ? t('storage.backup.progressUnitObjects')
+    : t('storage.backup.progressUnitMedia')
+}
+
 function jobMessage(job: BackupJobItem): string {
   if (job.status === 'failed') {
     return job.error || job.message || t('storage.backup.jobFailedUnknown')
@@ -174,7 +180,7 @@ function formatTime(value: string) {
                 class="text-xs text-dimmed"
               >—</span>
             </td>
-            <td class="min-w-32 px-4 py-3.5 sm:px-5">
+            <td class="min-w-40 px-4 py-3.5 sm:px-5">
               <div class="flex items-center gap-2">
                 <div class="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                   <div
@@ -183,10 +189,15 @@ function formatTime(value: string) {
                     :style="{ width: `${progressPercent(job)}%` }"
                   />
                 </div>
-                <span class="shrink-0 text-xs tabular-nums text-muted">
-                  <template v-if="job.total">{{ job.progress }}/{{ job.total }}</template>
-                  <template v-else-if="job.status === 'done'">100%</template>
-                  <template v-else>—</template>
+                <span class="flex shrink-0 flex-col text-right">
+                  <span class="text-xs tabular-nums text-muted">
+                    <template v-if="job.total">{{ job.progress }}/{{ job.total }}</template>
+                    <template v-else-if="job.status === 'done'">100%</template>
+                    <template v-else>—</template>
+                  </span>
+                  <span class="text-[10px] text-dimmed">
+                    {{ progressUnit(job) }}
+                  </span>
                 </span>
               </div>
             </td>

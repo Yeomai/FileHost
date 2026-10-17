@@ -1,5 +1,5 @@
 export type ApiDocMethod = 'GET' | 'POST' | 'DELETE'
-export type ApiDocCategory = 'image' | 'extension' | 'system'
+export type ApiDocCategory = 'image' | 'video' | 'file' | 'extension' | 'system'
 export type ApiParamLocation = 'form-data' | 'query' | 'header' | 'body'
 
 export interface ApiDocParam {
@@ -251,6 +251,635 @@ export function buildApiDocs(ctx: ApiDocsContext): ApiDocEndpoint[] {
   "success": true,
   "deleted": ["images/2026/08/a.webp"],
   "failed": []
+}`
+    },
+    {
+      id: 'videoUpload',
+      category: 'video',
+      method: 'POST',
+      path: '/api/videos/upload',
+      titleKey: 'api.docs.videoUpload.title',
+      descKey: 'api.docs.videoUpload.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'video',
+          type: 'file',
+          location: 'form-data',
+          required: true,
+          descriptionKey: 'api.params.videoUpload.video'
+        },
+        {
+          name: 'file',
+          type: 'file',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.file'
+        },
+        {
+          name: 'files',
+          type: 'file',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.files'
+        },
+        {
+          name: 'transcode',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.transcode'
+        },
+        {
+          name: 'transcodePreset',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.transcodePreset'
+        },
+        {
+          name: 'transcodeBitratePercent',
+          type: 'number',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.transcodeBitratePercent'
+        },
+        {
+          name: 'token',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.videoUpload.token'
+        }
+      ],
+      curl: `curl -X POST "${baseUrl}/api/videos/upload" \\
+  ${auth} \\
+  -F "video=@./demo.mp4" \\
+  -F "transcode=1" \\
+  -F "transcodePreset=compress" \\
+  -F "transcodeBitratePercent=80"`,
+      responseExample: `{
+  "success": true,
+  "items": [
+    {
+      "key": "videos/2026/10/abc123.mp4",
+      "url": "https://pic.example.com/videos/2026/10/abc123.mp4",
+      "originalName": "demo.mp4",
+      "contentType": "video/mp4",
+      "size": 10485760,
+      "uploadedAt": "2026-10-17T03:00:00.000Z",
+      "markdown": "[demo.mp4](https://pic.example.com/videos/2026/10/abc123.mp4)",
+      "thumbUrl": "https://pic.example.com/videos/2026/10/abc123.webp"
+    }
+  ],
+  "errors": [],
+  "accessMode": "public"
+}`
+    },
+    {
+      id: 'videoList',
+      category: 'video',
+      method: 'GET',
+      path: '/api/files',
+      titleKey: 'api.docs.videoList.title',
+      descKey: 'api.docs.videoList.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'kind',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.mediaList.kindVideo'
+        },
+        {
+          name: 'page',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.page'
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.limit'
+        },
+        {
+          name: 'q',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.q'
+        },
+        {
+          name: 'processing',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.processing'
+        },
+        {
+          name: 'backendId',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.backendId'
+        },
+        {
+          name: 'uploadSource',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.uploadSource'
+        },
+        {
+          name: 'tagIds',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagIds'
+        },
+        {
+          name: 'tagMode',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagMode'
+        },
+        {
+          name: 'untagged',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.untagged'
+        }
+      ],
+      curl: `curl "${baseUrl}/api/files?kind=video&page=1&limit=20" \\
+  ${auth}`,
+      responseExample: `{
+  "items": [
+    {
+      "key": "videos/2026/10/abc123.mp4",
+      "url": "https://pic.example.com/videos/2026/10/abc123.mp4",
+      "originalName": "demo.mp4",
+      "contentType": "video/mp4",
+      "size": 3580000,
+      "uploadedAt": "2026-10-17T03:00:00.000Z",
+      "transcodeStatus": "done",
+      "transcodeProgress": 100,
+      "transcodePreset": "veryfast",
+      "sourceDeleted": true,
+      "thumbUrl": "https://pic.example.com/videos/2026/10/abc123.webp",
+      "hlsUrl": "https://pic.example.com/videos/2026/10/abc123/index.m3u8",
+      "hlsKey": "videos/2026/10/abc123/index.m3u8"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "accessMode": "public"
+}`
+    },
+    {
+      id: 'videoDelete',
+      category: 'video',
+      method: 'DELETE',
+      path: '/api/files',
+      titleKey: 'api.docs.videoDelete.title',
+      descKey: 'api.docs.videoDelete.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'key',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.videoDelete.key'
+        }
+      ],
+      curl: `curl -X DELETE "${baseUrl}/api/files?key=videos/2026/10/abc123.mp4" \\
+  ${auth}`,
+      responseExample: `{
+  "success": true
+}`
+    },
+    {
+      id: 'videoSearch',
+      category: 'video',
+      method: 'GET',
+      path: '/api/videos/search',
+      titleKey: 'api.docs.videoSearch.title',
+      descKey: 'api.docs.videoSearch.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'q',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.mediaSearch.q'
+        },
+        {
+          name: 'page',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.page'
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.limit'
+        },
+        {
+          name: 'backendId',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.backendId'
+        },
+        {
+          name: 'uploadSource',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.uploadSource'
+        },
+        {
+          name: 'tagIds',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagIds'
+        },
+        {
+          name: 'tagMode',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagMode'
+        },
+        {
+          name: 'untagged',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.untagged'
+        },
+        {
+          name: 'processing',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.processing'
+        }
+      ],
+      curl: `curl "${baseUrl}/api/videos/search?q=demo&page=1&limit=20" \\
+  ${auth}`,
+      responseExample: `{
+  "items": [
+    {
+      "key": "videos/2026/10/demo.mp4",
+      "originalName": "demo.mp4",
+      "contentType": "video/mp4",
+      "size": 10485760,
+      "transcodeStatus": "done",
+      "thumbUrl": "https://pic.example.com/videos/2026/10/demo.webp",
+      "hlsUrl": "https://pic.example.com/videos/2026/10/demo/index.m3u8"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "accessMode": "public"
+}`
+    },
+    {
+      id: 'videoBatchDelete',
+      category: 'video',
+      method: 'POST',
+      path: '/api/files/batch-delete',
+      titleKey: 'api.docs.videoBatchDelete.title',
+      descKey: 'api.docs.videoBatchDelete.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'keys',
+          type: 'string[]',
+          location: 'body',
+          required: true,
+          descriptionKey: 'api.params.videoBatchDelete.keys'
+        }
+      ],
+      curl: `curl -X POST "${baseUrl}/api/files/batch-delete" \\
+  ${auth} \\
+  -H "Content-Type: application/json" \\
+  -d '{"keys":["videos/2026/10/a.mp4","videos/2026/10/b.mp4"]}'`,
+      responseExample: `{
+  "success": true,
+  "deleted": [
+    "videos/2026/10/a.mp4",
+    "videos/2026/10/b.mp4"
+  ],
+  "failed": []
+}`
+    },
+    {
+      id: 'fileUpload',
+      category: 'file',
+      method: 'POST',
+      path: '/api/files/upload',
+      titleKey: 'api.docs.fileUpload.title',
+      descKey: 'api.docs.fileUpload.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'file',
+          type: 'file',
+          location: 'form-data',
+          required: true,
+          descriptionKey: 'api.params.fileUpload.file'
+        },
+        {
+          name: 'files',
+          type: 'file',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.fileUpload.files'
+        },
+        {
+          name: 'token',
+          type: 'string',
+          location: 'form-data',
+          required: false,
+          descriptionKey: 'api.params.fileUpload.token'
+        }
+      ],
+      curl: `curl -X POST "${baseUrl}/api/files/upload" \\
+  ${auth} \\
+  -F "file=@./report.pdf"`,
+      responseExample: `{
+  "success": true,
+  "items": [
+    {
+      "key": "files/2026/10/abc123.pdf",
+      "url": "https://pic.example.com/files/2026/10/abc123.pdf",
+      "originalName": "report.pdf",
+      "contentType": "application/pdf",
+      "size": 5242880,
+      "uploadedAt": "2026-10-17T03:00:00.000Z",
+      "markdown": "[report.pdf](https://pic.example.com/files/2026/10/abc123.pdf)"
+    }
+  ],
+  "errors": [],
+  "accessMode": "public"
+}`
+    },
+    {
+      id: 'fileList',
+      category: 'file',
+      method: 'GET',
+      path: '/api/files',
+      titleKey: 'api.docs.fileList.title',
+      descKey: 'api.docs.fileList.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'kind',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.mediaList.kindFile'
+        },
+        {
+          name: 'page',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.page'
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.limit'
+        },
+        {
+          name: 'q',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.q'
+        },
+        {
+          name: 'backendId',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.backendId'
+        },
+        {
+          name: 'uploadSource',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.uploadSource'
+        },
+        {
+          name: 'tagIds',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagIds'
+        },
+        {
+          name: 'tagMode',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagMode'
+        },
+        {
+          name: 'untagged',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.untagged'
+        }
+      ],
+      curl: `curl "${baseUrl}/api/files?kind=file&page=1&limit=20" \\
+  ${auth}`,
+      responseExample: `{
+  "items": [
+    {
+      "key": "files/2026/10/abc123.pdf",
+      "url": "https://pic.example.com/files/2026/10/abc123.pdf",
+      "originalName": "report.pdf",
+      "contentType": "application/pdf",
+      "size": 5242880,
+      "uploadedAt": "2026-10-17T03:00:00.000Z",
+      "markdown": "[report.pdf](https://pic.example.com/files/2026/10/abc123.pdf)"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "accessMode": "public"
+}`
+    },
+    {
+      id: 'fileDelete',
+      category: 'file',
+      method: 'DELETE',
+      path: '/api/files',
+      titleKey: 'api.docs.fileDelete.title',
+      descKey: 'api.docs.fileDelete.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'key',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.fileDelete.key'
+        }
+      ],
+      curl: `curl -X DELETE "${baseUrl}/api/files?key=files/2026/10/abc123.pdf" \\
+  ${auth}`,
+      responseExample: `{
+  "success": true
+}`
+    },
+    {
+      id: 'fileBatchDelete',
+      category: 'file',
+      method: 'POST',
+      path: '/api/files/batch-delete',
+      titleKey: 'api.docs.fileBatchDelete.title',
+      descKey: 'api.docs.fileBatchDelete.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'keys',
+          type: 'string[]',
+          location: 'body',
+          required: true,
+          descriptionKey: 'api.params.fileBatchDelete.keys'
+        }
+      ],
+      curl: `curl -X POST "${baseUrl}/api/files/batch-delete" \\
+  ${auth} \\
+  -H "Content-Type: application/json" \\
+  -d '{"keys":["files/2026/10/a.pdf","files/2026/10/b.zip"]}'`,
+      responseExample: `{
+  "success": true,
+  "deleted": [
+    "files/2026/10/a.pdf",
+    "files/2026/10/b.zip"
+  ],
+  "failed": []
+}`
+    },
+    {
+      id: 'fileSearch',
+      category: 'file',
+      method: 'GET',
+      path: '/api/files/search',
+      titleKey: 'api.docs.fileSearch.title',
+      descKey: 'api.docs.fileSearch.desc',
+      requiresAuth: true,
+      params: [
+        {
+          name: 'kind',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.mediaList.kindFile'
+        },
+        {
+          name: 'q',
+          type: 'string',
+          location: 'query',
+          required: true,
+          descriptionKey: 'api.params.mediaSearch.q'
+        },
+        {
+          name: 'page',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.page'
+        },
+        {
+          name: 'limit',
+          type: 'number',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.limit'
+        },
+        {
+          name: 'backendId',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.backendId'
+        },
+        {
+          name: 'uploadSource',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.uploadSource'
+        },
+        {
+          name: 'tagIds',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagIds'
+        },
+        {
+          name: 'tagMode',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.tagMode'
+        },
+        {
+          name: 'untagged',
+          type: 'string',
+          location: 'query',
+          required: false,
+          descriptionKey: 'api.params.mediaList.untagged'
+        }
+      ],
+      curl: `curl "${baseUrl}/api/files/search?kind=file&q=report&page=1&limit=20" \\
+  ${auth}`,
+      responseExample: `{
+  "items": [
+    {
+      "key": "files/2026/10/report.pdf",
+      "url": "https://pic.example.com/files/2026/10/report.pdf",
+      "originalName": "report.pdf",
+      "contentType": "application/pdf",
+      "size": 5242880,
+      "uploadedAt": "2026-10-17T03:00:00.000Z",
+      "markdown": "[report.pdf](https://pic.example.com/files/2026/10/report.pdf)"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 20,
+  "totalPages": 1,
+  "accessMode": "public"
 }`
     },
     {

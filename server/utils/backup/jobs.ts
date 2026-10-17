@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { getDb } from '../db'
+import { getDb, getPrimaryAdminUserId } from '../db'
 import { ensureBackupSchema } from './schema'
 
 export type BackupJobType = 'full_export' | 'full_restore' | 'backend_sync'
@@ -7,6 +7,7 @@ export type BackupJobStatus = 'pending' | 'running' | 'done' | 'failed'
 
 export interface BackupJob {
   id: string
+  userId: number | null
   type: BackupJobType
   status: BackupJobStatus
   progress: number
@@ -21,6 +22,7 @@ export interface BackupJob {
 
 interface BackupJobRow {
   id: string
+  user_id: number | null
   type: BackupJobType
   status: BackupJobStatus
   progress: number
@@ -43,6 +45,7 @@ function rowToJob(row: BackupJobRow): BackupJob {
   })()
   return {
     id: row.id,
+    userId: row.user_id ?? null,
     type: row.type,
     status: row.status,
     progress: row.progress,
@@ -62,33 +65,34 @@ function generateJobId(): string {
   return `${stamp}-${suffix}`
 }
 
-export function getRunningBackupJob(): BackupJob | null {
+export function getRunningBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
-    SELECT id, type, status, progress, total, message, payload_json,
+    SELECT id, user_id, type, status, progress, total, message, payload_json,
            output_path, error, created_at, finished_at
     FROM backup_jobs
-    WHERE status = 'running'
+    WHERE status = 'running'${userId === undefined ? '' : ' AND user_id = ?'}
     LIMIT 1
-  `).get() as BackupJobRow | undefined
+  `).get(...(userId === undefined ? [] : [userId])) as BackupJobRow | undefined
   return row ? rowToJob(row) : null
 }
 
-export function getActiveBackupJob(): BackupJob | null {
+export function getActiveBackupJob(userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
-    SELECT id, type, status, progress, total, message, payload_json,
+    SELECT id, user_id, type, status, progress, total, message, payload_json,
            output_path, error, created_at, finished_at
     FROM backup_jobs
-    WHERE status IN ('pending', 'running')
+    WHERE status IN ('pending', 'running')${userId === undefined ? '' : ' AND user_id = ?'}
     ORDER BY created_at DESC
     LIMIT 1
-  `).get() as BackupJobRow | undefined
+  `).get(...(userId === undefined ? [] : [userId])) as BackupJobRow | undefined
   return row ? rowToJob(row) : null
 }
 
 export function createBackupJob(input: {
   type: BackupJobType
+  userId?: number | null
   total?: number
   message?: string
   payload?: Record<string, unknown>
@@ -97,13 +101,15 @@ export function createBackupJob(input: {
   const id = generateJobId()
   const now = new Date().toISOString()
   const payloadJson = JSON.stringify(input.payload ?? {})
+  const userId = input.userId === undefined ? getPrimaryAdminUserId() : input.userId
 
   getDb().prepare(`
     INSERT INTO backup_jobs
-      (id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
-    VALUES (?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, ?, NULL)
+      (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
+    VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, NULL, NULL, ?, NULL)
   `).run(
     id,
+    userId,
     input.type,
     input.total ?? 0,
     input.message ?? '',
@@ -114,41 +120,67 @@ export function createBackupJob(input: {
   return getBackupJob(id)!
 }
 
-export function getBackupJob(id: string): BackupJob | null {
+export function getBackupJob(id: string, userId?: number): BackupJob | null {
   ensureBackupSchema()
   const row = getDb().prepare(`
-    SELECT id, type, status, progress, total, message, payload_json,
+    SELECT id, user_id, type, status, progress, total, message, payload_json,
            output_path, error, created_at, finished_at
     FROM backup_jobs
-    WHERE id = ?
-  `).get(id) as BackupJobRow | undefined
+    WHERE id = ?${userId === undefined ? '' : ' AND user_id = ?'}
+  `).get(...(userId === undefined ? [id] : [id, userId])) as BackupJobRow | undefined
   return row ? rowToJob(row) : null
 }
 
-export function listBackupJobs(limit = 20): BackupJob[] {
-  return listBackupJobsPage(1, limit).jobs
+export function listBackupJobs(limit = 20, userId?: number): BackupJob[] {
+  return listBackupJobsPage(1, limit, userId).jobs
 }
 
-export function countBackupJobs(): number {
+export function countBackupJobs(userId?: number): number {
   ensureBackupSchema()
-  const row = getDb().prepare('SELECT COUNT(*) AS count FROM backup_jobs').get() as { count: number }
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS count FROM backup_jobs
+    ${userId === undefined ? '' : 'WHERE user_id = ?'}
+  `).get(...(userId === undefined ? [] : [userId])) as { count: number }
   return row.count
 }
 
-export function listBackupJobsPage(page = 1, pageSize = 10): { jobs: BackupJob[], total: number } {
+export function listBackupJobsPage(
+  page = 1,
+  pageSize = 10,
+  userId?: number
+): { jobs: BackupJob[], total: number } {
   ensureBackupSchema()
   const limit = Math.min(50, Math.max(1, pageSize))
   const safePage = Math.max(1, page)
   const offset = (safePage - 1) * limit
-  const total = countBackupJobs()
+  const total = countBackupJobs(userId)
   const rows = getDb().prepare(`
-    SELECT id, type, status, progress, total, message, payload_json,
+    SELECT id, user_id, type, status, progress, total, message, payload_json,
            output_path, error, created_at, finished_at
     FROM backup_jobs
+    ${userId === undefined ? '' : 'WHERE user_id = ?'}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset) as unknown as BackupJobRow[]
+  `).all(...(userId === undefined ? [limit, offset] : [userId, limit, offset])) as unknown as BackupJobRow[]
   return { jobs: rows.map(rowToJob), total }
+}
+
+export function listAllBackupJobsForUser(userId: number): BackupJob[] {
+  ensureBackupSchema()
+  const rows = getDb().prepare(`
+    SELECT id, user_id, type, status, progress, total, message, payload_json,
+           output_path, error, created_at, finished_at
+    FROM backup_jobs
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `).all(userId) as unknown as BackupJobRow[]
+  return rows.map(rowToJob)
+}
+
+export function deleteBackupJobsForUser(userId: number): number {
+  ensureBackupSchema()
+  const result = getDb().prepare('DELETE FROM backup_jobs WHERE user_id = ?').run(userId)
+  return Number(result.changes ?? 0)
 }
 
 /** Capture live task history before a full restore swaps the database file. */
@@ -165,12 +197,13 @@ export function restoreBackupJobsAfterReplace(preserved: BackupJob[]): void {
     db.prepare('DELETE FROM backup_jobs').run()
     const insert = db.prepare(`
       INSERT INTO backup_jobs
-        (id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, user_id, type, status, progress, total, message, payload_json, output_path, error, created_at, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const job of preserved) {
       insert.run(
         job.id,
+        job.userId,
         job.type,
         job.status,
         job.progress,

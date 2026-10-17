@@ -38,6 +38,15 @@ function contentTypeFromKey(key: string): string {
   }
 }
 
+function decodeMetadata(value: string | undefined): string | undefined {
+  if (!value) return value
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export function buildObjectKey(prefix: string | undefined, key: string): string {
   const trimmed = prefix?.replace(/^\/+|\/+$/g, '') ?? ''
   return trimmed ? `${trimmed}/${key}` : key
@@ -125,7 +134,8 @@ export class S3StorageBackend implements StorageBackend {
       Body: bytes,
       ContentType: meta.contentType,
       Metadata: {
-        originalName: meta.originalName,
+        // S3 metadata headers must be ASCII-safe.
+        originalName: encodeURIComponent(meta.originalName),
         uploadedAt: meta.uploadedAt,
         userId: meta.userId != null ? String(meta.userId) : ''
       }
@@ -144,7 +154,7 @@ export class S3StorageBackend implements StorageBackend {
       const uploadedAt = response.Metadata?.uploadedat
         ?? response.LastModified?.toISOString()
         ?? new Date().toISOString()
-      const originalName = response.Metadata?.originalname
+      const originalName = decodeMetadata(response.Metadata?.originalname)
         ?? key.split('/').pop()
         ?? 'image'
       const userIdRaw = response.Metadata?.userid

@@ -70,10 +70,11 @@ export function scheduleBackupJob(
   })
 }
 
-export function startFullExportJob(appVersion: string): BackupJob {
+export function startFullExportJob(appVersion: string, userId?: number | null): BackupJob {
   claimJobSlot()
   const job = createBackupJob({
     type: 'full_export',
+    userId,
     message: '等待开始…'
   })
   scheduleBackupJob(job, () => runFullExportJob(job.id, appVersion))
@@ -82,11 +83,13 @@ export function startFullExportJob(appVersion: string): BackupJob {
 
 export function startFullRestoreJob(
   archivePath: string,
-  conflictMode: 'skip' | 'overwrite'
+  conflictMode: 'skip' | 'overwrite',
+  userId?: number | null
 ): BackupJob {
   claimJobSlot()
   const job = createBackupJob({
     type: 'full_restore',
+    userId,
     message: '等待开始…',
     payload: { archivePath, conflictMode }
   })
@@ -100,10 +103,11 @@ export function startBackendSyncJob(options: {
   deleteSource?: boolean
   setDefault?: boolean
   dryRun?: boolean
-}): BackupJob {
+}, userId?: number | null): BackupJob {
   claimJobSlot()
   const job = createBackupJob({
     type: 'backend_sync',
+    userId,
     message: options.dryRun ? '预检中…' : '等待开始…',
     payload: options
   })

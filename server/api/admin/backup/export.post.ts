@@ -5,14 +5,14 @@ import { getBackupExportEstimate } from '../../../utils/backup/stats'
 import { startFullExportJob } from '../../../utils/backup/runner'
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
   const config = useRuntimeConfig(event)
   const appVersion = String(config.appVersion ?? '0.0.0')
 
   const estimate = await getBackupExportEstimate()
 
   try {
-    const job = startFullExportJob(appVersion)
+    const job = startFullExportJob(appVersion, user.id)
     return {
       job: serializeBackupJob(job),
       estimate

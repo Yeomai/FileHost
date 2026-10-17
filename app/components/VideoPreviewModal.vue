@@ -20,11 +20,13 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean]
   'delete': []
+  'download': []
 }>()
 
 const toast = useToast()
 const { formatFileSize } = useFileSize()
 const { t, locale } = useI18n()
+const transcodeFailureLabel = useTranscodeFailureLabel()
 const { copyFormat } = useUploadPreferences('video')
 
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -80,7 +82,7 @@ const transcodeLabel = computed(() => {
     case 'done':
       return t('library.video.transcodeDone')
     case 'failed':
-      return t('library.transcodeFailed')
+      return transcodeFailureLabel(item.transcodeError)
     default:
       return t('library.video.transcodeNone')
   }
@@ -497,6 +499,15 @@ function downloadOriginal() {
           variant="outline"
           size="sm"
           @click="downloadOriginal"
+        />
+        <UButton
+          v-else-if="item.hlsUrl"
+          :label="t('library.video.downloadMp4')"
+          icon="i-lucide-download"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          @click="emit('download')"
         />
         <UButton
           :label="t('image.previewCopyLink')"

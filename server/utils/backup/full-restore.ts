@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises'
 import * as tar from 'tar'
 import { getImageIndexRow } from '../image-index'
 import { getActiveBackend } from '../storage/resolver'
+import { contentTypeFromKey } from '../content-type'
 import { replaceDatabaseFromSnapshot } from './db-snapshot'
 import { markJobDone, markJobFailed, restoreBackupJobsAfterReplace, snapshotBackupJobs, updateBackupJob } from './jobs'
 import {
@@ -60,10 +61,11 @@ export async function previewFullRestore(archivePath: string): Promise<BackupRes
       blobFiles = []
     }
 
+    const backend = await getActiveBackend()
     let conflictingImages = 0
     for (const file of blobFiles) {
       const rel = relative(blobsRoot, file).replace(/\\/g, '/')
-      if (getImageIndexRow(rel)) {
+      if (await backend.head(rel)) {
         conflictingImages += 1
       }
     }
@@ -104,7 +106,7 @@ export async function runFullRestoreJob(
     restoreBackupJobsAfterReplace(preservedJobs)
     updateBackupJob(jobId, {
       status: 'running',
-      message: '正在恢复图片…',
+      message: '正在恢复文件…',
       progress: 0,
       total: 0
     })
@@ -112,7 +114,7 @@ export async function runFullRestoreJob(
     const blobsRoot = join(stagingRoot, 'blobs')
     const blobFiles = await walkFiles(blobsRoot)
     const total = blobFiles.length + 1
-    updateBackupJob(jobId, { total, progress: 1, message: '正在恢复图片…' })
+    updateBackupJob(jobId, { total, progress: 1, message: '正在恢复文件…' })
 
     const backend = await getActiveBackend()
     let processed = 1
@@ -120,8 +122,9 @@ export async function runFullRestoreJob(
     for (const file of blobFiles) {
       const key = relative(blobsRoot, file).replace(/\\/g, '/')
       const indexed = getImageIndexRow(key)
+      const exists = Boolean(await backend.head(key))
 
-      if (!indexed && options.conflictMode === 'skip') {
+      if (exists && options.conflictMode === 'skip') {
         processed += 1
         continue
       }
@@ -138,19 +141,19 @@ export async function runFullRestoreJob(
         : {
             originalName: key.split('/').pop() ?? key,
             uploadedAt: new Date().toISOString(),
-            contentType: 'application/octet-stream',
+            contentType: contentTypeFromKey(key),
             size: bytes.length,
             userId: null
           }
 
-      if (options.conflictMode === 'overwrite' || !indexed) {
+      if (options.conflictMode === 'overwrite' || !exists) {
         await backend.put(key, bytes, meta)
       }
 
       processed += 1
       updateBackupJob(jobId, {
         progress: processed,
-        message: `正在恢复图片 ${processed}/${total}…`
+        message: `正在恢复文件 ${processed}/${total}…`
       })
     }
 
@@ -159,7 +162,7 @@ export async function runFullRestoreJob(
     markJobDone(jobId, {
       message: '恢复完成，请重新登录并在存储页检查对象存储密钥',
       payload: {
-        restoredImages: blobFiles.length,
+        restoredFiles: blobFiles.length,
         manifest
       }
     })

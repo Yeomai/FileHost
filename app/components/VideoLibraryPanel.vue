@@ -7,6 +7,7 @@ const { isAuthenticated, handleAuthError } = useAuth()
 const toast = useToast()
 const { t, locale } = useI18n()
 const { items: tagItems, fetchTags, batchUpdateTags } = useTags()
+const transcodeFailureLabel = useTranscodeFailureLabel()
 
 const items = ref<FileItem[]>([])
 const total = ref(0)
@@ -27,6 +28,8 @@ const deleteTargetKeys = ref<string[]>([])
 const deleting = ref(false)
 const previewOpen = ref(false)
 const previewItem = ref<FileItem | null>(null)
+const downloadOpen = ref(false)
+const downloadItem = ref<FileItem | null>(null)
 
 const currentBackend = ref('all')
 const currentSource = ref('all')
@@ -66,7 +69,7 @@ function videoLink(item: FileItem): string {
 }
 
 function thumbLink(item: FileItem): string {
-  return withToken(item.thumbUrl)
+  return withToken(item.thumbUrl) || '/video-placeholder.svg'
 }
 
 function downloadUrl(item: FileItem): string {
@@ -262,6 +265,13 @@ async function confirmBatchTags(tagIds: number[], action: 'add' | 'remove') {
 function openPreview(item: FileItem) {
   previewItem.value = item
   previewOpen.value = true
+}
+
+function requestDownload(item: FileItem | null) {
+  if (!item?.hlsUrl) return
+  previewOpen.value = false
+  downloadItem.value = item
+  downloadOpen.value = true
 }
 
 onMounted(() => {
@@ -514,6 +524,7 @@ defineExpose({ refresh })
           :selected="selectedKeys.has(item.key)"
           @update:selected="toggleSelected(item.key, $event)"
           @play="openPreview(item)"
+          @download="requestDownload(item)"
           @delete="requestDelete(item)"
         />
       </div>
@@ -577,17 +588,9 @@ defineExpose({ refresh })
                       :aria-label="t('library.play')"
                       @click="openPreview(item)"
                     >
-                      <img
-                        v-if="item.thumbUrl"
+                      <VideoThumbnail
                         :src="thumbLink(item)"
                         :alt="displayName(item)"
-                        loading="lazy"
-                        class="size-full object-cover"
-                      >
-                      <UIcon
-                        v-else
-                        name="i-lucide-film"
-                        class="size-5 text-dimmed"
                       />
                     </button>
                     <p
@@ -611,8 +614,9 @@ defineExpose({ refresh })
                       variant="subtle"
                       size="xs"
                       class="shrink-0"
+                      :title="transcodeFailureLabel(item.transcodeError)"
                     >
-                      {{ t('library.transcodeFailed') }}
+                      {{ transcodeFailureLabel(item.transcodeError) }}
                     </UBadge>
                   </div>
                 </td>
@@ -696,6 +700,15 @@ defineExpose({ refresh })
                       :aria-label="t('files.download')"
                     />
                     <UButton
+                      v-else-if="item.hlsUrl"
+                      size="xs"
+                      variant="ghost"
+                      color="neutral"
+                      icon="i-lucide-download"
+                      :aria-label="t('library.video.downloadMp4')"
+                      @click="requestDownload(item)"
+                    />
+                    <UButton
                       size="xs"
                       variant="ghost"
                       color="error"
@@ -746,7 +759,13 @@ defineExpose({ refresh })
       :thumb-link="previewItem ? thumbLink(previewItem) : ''"
       :download-link="previewItem ? downloadUrl(previewItem) : ''"
       :deleting="deleting"
+      @download="requestDownload(previewItem)"
       @delete="previewItem && requestDelete(previewItem)"
+    />
+
+    <HlsDownloadModal
+      v-model:open="downloadOpen"
+      :item="downloadItem"
     />
   </div>
 </template>

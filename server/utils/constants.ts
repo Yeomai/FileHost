@@ -38,9 +38,7 @@ export const VIDEO_EXTENSIONS = [
   'flv',
   'wmv',
   'mpg',
-  'mpeg',
-  'ts',
-  'm3u8'
+  'mpeg'
 ] as const
 
 /** 文件床直链缓存：公开访问可长期缓存，Token 访问不能进共享缓存 */

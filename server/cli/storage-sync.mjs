@@ -1,5 +1,5 @@
 /**
- * Sync images between storage backends.
+ * Sync media files between storage backends.
  *
  * Usage:
  *   node server/cli/storage-sync.mjs --from <id> --to <id> [--delete-source] [--set-default] [--dry-run]
@@ -9,9 +9,13 @@
  */
 import { loadServerModule } from './backup-cli-loader.mjs'
 
-const { ensureBackupSchema } = loadServerModule('utils/backup/schema.ts')
-const { createBackupJob, getBackupJob } = loadServerModule('utils/backup/jobs.ts')
-const { previewBackendSync, runBackendSyncJob } = loadServerModule('utils/backup/backend-sync.ts')
+const {
+  ensureBackupSchema,
+  createBackupJob,
+  getBackupJob,
+  previewBackendSync,
+  runBackendSyncJob
+} = loadServerModule('cli/backup-runtime.ts')
 
 function usage() {
   console.error('Usage: storage-sync --from <backend-id> --to <backend-id> [--delete-source] [--set-default] [--dry-run]')
@@ -45,7 +49,7 @@ async function main() {
 
   if (dryRun) {
     const preview = previewBackendSync(options)
-    console.log(`[PicHost] Dry run: ${preview.imageCount} images, ${preview.imageBytes} bytes`)
+    console.log(`[PicHost] Dry run: ${preview.imageCount} media items, ${preview.imageBytes} bytes`)
     console.log(`[PicHost] From ${preview.fromBackendId} → ${preview.toBackendId}`)
     return
   }

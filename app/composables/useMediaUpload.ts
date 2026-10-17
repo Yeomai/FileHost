@@ -89,7 +89,7 @@ export function useMediaUpload(kind: UploadMediaKind) {
   /** 封面缩略图地址（同样按访问模式拼接） */
   function thumbLink(item: FileItem): string {
     const base = item.thumbUrl
-    if (!base) return ''
+    if (!base) return '/video-placeholder.svg'
     if (accessMode.value !== 'token' || !apiToken.value) return base
     const separator = base.includes('?') ? '&' : '?'
     return `${base}${separator}token=${encodeURIComponent(apiToken.value)}`

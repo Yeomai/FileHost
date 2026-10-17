@@ -8,6 +8,7 @@
     "loadingSession": "正在验证登录状态…",
     "save": "保存",
     "cancel": "取消",
+    "continue": "继续",
     "copy": "复制",
     "delete": "删除",
     "edit": "编辑",
@@ -546,7 +547,20 @@
     "storageId": "存储标识",
     "storageType": "存储类型",
     "badgeLocal": "本地",
-    "defaultStorageTip": "默认存储提示：新上传的图片将默认保存到「{name}」。可点击其他后端的「设为默认」进行修改。",
+    "defaultStorageTip": "新上传的所有图片、视频、文件将默认保存到「{name}」。可点击其他后端的「设为默认」进行修改。",
+    "clearStorage": "清空存储",
+    "clearStorageTitle": "清空我的存储",
+    "clearStorageDescription": "永久删除当前账号上传的所有图片、视频、文件和缓存，不影响其他用户的数据。",
+    "clearStorageWarning": "高危风险：此操作会清空存储中的所有文件和缓存，无法撤销！",
+    "clearStorageScope": "只会清除当前登录用户的数据和文件。其他用户的数据、账户、存储配置和全站备份不会被删除。",
+    "clearStorageFinalTitle": "最终确认",
+    "clearStorageInstruction": "请输入“我已确认”以继续。操作开始后无法取消或撤销。",
+    "clearStoragePlaceholder": "我已确认",
+    "clearStoragePhrase": "我已确认",
+    "clearStorageConfirm": "永久清空",
+    "clearStorageSuccess": "已清空 {files} 个文件和 {cache} 个临时缓存，存储空间已释放",
+    "clearStoragePartial": "{failed}/{total} 个文件清理失败，请重试",
+    "clearStorageFailed": "清空存储失败，请稍后重试",
     "supportedTitle": "支持的存储后端",
     "supportedSubtitle": "PicHost 支持多种存储后端，满足不同场景需求",
     "supportedLocalDesc": "适合小型部署和个人使用",
@@ -554,7 +568,7 @@
     "supportedS3Title": "S3 兼容",
     "supportedS3Desc": "兼容 Amazon S3 协议的存储服务",
     "supportedTelegramDesc": "用 Telegram 频道/群组存图，适合轻量与无限容量场景",
-    "footerTip": "默认存储后端将自动接收所有新上传的图片",
+    "footerTip": "默认存储后端将自动接收所有新上传的图片、视频和文件",
     "statTotal": "总量",
     "statUsed": "已用",
     "statFree": "剩余",
@@ -585,28 +599,28 @@
     "manageStorageHint": "配置 R2 / S3 / COS 等多后端与直链策略",
     "backup": {
       "sectionTitle": "备份与迁移",
-      "sectionSubtitle": "整站备份恢复与跨后端图片迁移",
+      "sectionSubtitle": "整站备份恢复与跨后端文件迁移",
       "siteTitle": "站点备份与恢复",
       "siteSubtitle": "用于换机、灾备与整站恢复",
-      "siteFooterHint": "备份包含数据库与图片，不包含 secret_json 明文。",
+      "siteFooterHint": "备份包含数据库与全部文件，不包含 secret_json 明文。",
       "exportTitle": "创建站点备份",
-      "exportSubtitle": "打包数据库与全部图片为 .phost.tar.gz",
+      "exportSubtitle": "打包数据库与全部文件为 .phost.tar.gz",
       "exportAction": "开始备份",
       "exportStarted": "备份任务已开始",
       "exportFailed": "创建备份失败",
       "exportPathHint": "导出文件保存在 data/backups/",
       "exportIncludesTitle": "备份包含",
       "exportIncludesDb": "数据库快照（pichost.db）",
-      "exportIncludesImages": "全部图片文件（{count} 张）",
+      "exportIncludesImages": "全部图片、视频和文件（{count} 个）",
       "exportExcludesSecrets": "不含云存储 secret.json 明文",
       "exportConcurrencyHint": "同时仅可运行一个备份或迁移任务",
       "estimateLoading": "正在估算体积…",
-      "estimateImageCountLabel": "图片总数",
+      "estimateImageCountLabel": "文件总数",
       "estimatePackageSizeLabel": "预计备份包",
       "estimateDatabaseSnapshotLabel": "数据库快照",
       "estimateStoragePathLabel": "保存位置",
       "estimateStoragePathValue": "data/backups/",
-      "estimateImages": "图片 {count} 张 · {size}",
+      "estimateImages": "文件 {count} 个 · {size}",
       "estimateDatabase": "数据库约 {size}",
       "estimateTotal": "合计约 {size}",
       "restoreTitle": "从备份恢复",
@@ -623,44 +637,44 @@
       "restoreConfirm": "确认恢复",
       "restoreConfirmTitle": "确认恢复站点",
       "restoreConfirmSource": "来源：{name}",
-      "restoreOverwriteWarning": "覆盖模式将替换冲突图片与数据库，请确认已做好当前站点备份",
+      "restoreOverwriteWarning": "覆盖模式将替换冲突文件与数据库，请确认已做好当前站点备份",
       "restoreSelectRequired": "请选择或上传备份文件",
       "restoreStarted": "恢复任务已开始",
       "restoreFailed": "恢复失败",
       "conflictMode": "冲突策略",
-      "conflictSkip": "跳过已存在图片",
-      "conflictOverwrite": "覆盖已存在图片与数据库",
+      "conflictSkip": "跳过已存在文件",
+      "conflictOverwrite": "覆盖已存在文件与数据库",
       "syncTitle": "跨后端同步",
       "syncMigrateTitle": "跨后端迁移",
-      "syncMigrateSubtitle": "在已配置后端之间迁移图片",
-      "syncSubtitle": "在已配置的后端之间拷贝图片并更新索引",
+      "syncMigrateSubtitle": "在已配置后端之间迁移文件",
+      "syncSubtitle": "在已配置的后端之间拷贝文件并更新索引",
       "syncFrom": "源后端",
       "syncTo": "目标后端",
-      "syncPendingImages": "待迁移图片",
+      "syncPendingImages": "待迁移文件",
       "syncPendingSize": "预计体积",
       "syncIncludesTitle": "同步说明",
-      "syncIncludesCopy": "拷贝源端图片文件到目标后端",
+      "syncIncludesCopy": "拷贝源端图片、视频和文件到目标后端",
       "syncIncludesIndex": "更新索引中的 storage_backend_id",
       "syncIncludesConfig": "不修改站点配置与其它后端数据",
       "syncDryRun": "仅预览 Dry Run",
       "syncSetDefaultAfter": "迁移后设为默认后端",
       "syncStartMigrate": "开始迁移",
       "syncPreviewOnly": "预览",
-      "syncFooterHint": "仅迁移图片文件与索引，不影响站点配置。",
+      "syncFooterHint": "仅迁移文件与索引，不影响站点配置。",
       "syncDeleteSource": "同步后删除源端文件",
       "syncSetDefault": "同步后将目标设为默认",
       "syncPreview": "预检并开始",
       "syncConfirm": "开始同步",
       "syncConfirmTitle": "确认跨后端同步",
-      "syncDeleteWarning": "将删除源后端上的图片文件，此操作不可撤销",
+      "syncDeleteWarning": "将删除源后端上的文件，此操作不可撤销",
       "syncSelectRequired": "请选择源与目标后端",
       "syncSameBackend": "源与目标不能相同",
       "syncStarted": "同步任务已开始",
       "syncFailed": "同步失败",
       "previewFailed": "预检失败",
-      "previewImages": "图片数量",
-      "previewNew": "新增图片",
-      "previewConflicts": "冲突图片",
+      "previewImages": "文件数量",
+      "previewNew": "新增文件",
+      "previewConflicts": "冲突文件",
       "previewCreated": "备份时间",
       "previewSize": "数据量",
       "jobsTitle": "最近任务",
@@ -672,6 +686,8 @@
       "colType": "类型",
       "colStatus": "状态",
       "colProgress": "进度",
+      "progressUnitMedia": "媒体记录",
+      "progressUnitObjects": "存储对象",
       "colMessage": "说明",
       "colCreated": "创建时间",
       "colActions": "操作",
@@ -691,8 +707,8 @@
       "jobRunning": "已有任务正在运行，请稍后再试",
       "migrateIn": "迁入",
       "migrateOut": "迁出",
-      "migrateInHint": "从默认后端拷贝图片到此后端",
-      "migrateOutHint": "将图片从此后端迁出",
+      "migrateInHint": "从默认后端拷贝文件到此后端",
+      "migrateOutHint": "将文件从此后端迁出",
       "syncDraftApplied": "已填入同步表单，请确认后开始",
       "syncNeedTwoBackends": "至少需要两个存储后端才能同步",
       "selectBackend": "选择后端",
@@ -869,7 +885,7 @@
     "envOverrideTitle": "Token 由环境变量覆盖",
     "envOverrideDesc": "修改 API_UPLOAD_TOKEN 后需重启服务；后台无法重新生成。",
     "personalTitle": "个人 API Token",
-    "personalDesc": "此 Token 仅用于您自己的脚本上传，上传的图片归属您的账号。",
+    "personalDesc": "此 Token 仅用于您自己的脚本上传，上传的图片、视频或文件归属您的账号。",
     "notConfiguredTitle": "尚未配置 Token",
     "notConfiguredDesc": "首次打开会自动创建 Token，或点击「重新生成」。",
     "regenerate": "重新生成",
@@ -911,6 +927,8 @@
     "responseExample": "响应示例",
     "categories": {
       "image": "图片接口",
+      "video": "视频接口",
+      "file": "文件接口",
       "extension": "插件接口",
       "system": "系统通用"
     },
@@ -938,6 +956,47 @@
       "batchDelete": {
         "keys": "要删除的图片 key 数组"
       },
+      "videoUpload": {
+        "video": "上传视频主字段，单文件最大 500 MB",
+        "file": "兼容字段，可代替 video",
+        "files": "兼容字段，可一次上传多个视频",
+        "transcode": "设为 1 后异步转码为 HLS；不设置则只保留原视频并生成缩略图",
+        "transcodePreset": "可选转码档位：copy（直接封装）、veryfast（速度）、medium（平衡）、slow（质量）、compress（目标码率压缩）",
+        "transcodeBitratePercent": "仅 compress 档使用，目标码率为源码率的 10–100% 整数；省略时使用服务端当前设置",
+        "token": "可选，API Token 也可通过 Auth-Token 请求头传递"
+      },
+      "fileUpload": {
+        "file": "上传文件主字段，单文件最大 100 MB；禁止 HTML / HTM / SVG",
+        "files": "兼容字段，可一次上传多个文件",
+        "token": "可选，API Token 也可通过 Auth-Token 请求头传递"
+      },
+      "mediaList": {
+        "kindVideo": "固定为 video，获取视频列表",
+        "kindFile": "固定为 file，获取文件列表",
+        "page": "页码，从 1 开始",
+        "limit": "每页条数，默认 20，最大 100",
+        "q": "按文件名或路径关键词搜索",
+        "processing": "视频专用；设为 1 时只返回排队中或转码中的视频",
+        "uploadSource": "上传来源：web 或 api",
+        "tagIds": "按标签筛选，逗号分隔标签 ID",
+        "tagMode": "多标签筛选时使用 or 或 and，默认 or",
+        "untagged": "设为 1 时仅返回未标记内容"
+      },
+      "mediaSearch": {
+        "q": "搜索关键词，匹配文件名或存储路径；不能为空"
+      },
+      "videoDelete": {
+        "key": "视频存储路径；删除时同时清理缩略图与 HLS 文件"
+      },
+      "videoBatchDelete": {
+        "keys": "要删除的视频 key 数组，单次最多 100 个；同时清理缩略图和 HLS 文件"
+      },
+      "fileDelete": {
+        "key": "文件存储路径，如 files/2026/10/xxx.pdf"
+      },
+      "fileBatchDelete": {
+        "keys": "要删除的文件 key 数组，单次最多 100 个"
+      },
       "twikoo": {
         "image": "上传图片",
         "token": "API Token"
@@ -960,7 +1019,7 @@
       "notesTitle": "响应说明",
       "noteSuccess": "200 表示请求成功，返回 JSON 数据",
       "noteError": "4xx / 5xx 表示请求失败，查看 error 字段",
-      "noteLimit": "上传限制：单次最多 10 张，单张最大 10 MB"
+      "noteLimit": "上传限制：单次最多 10 个；视频单文件最大 500 MB，文件单文件最大 100 MB"
     },
     "docs": {
       "upload": {
@@ -982,6 +1041,46 @@
       "batchDelete": {
         "title": "批量删除",
         "desc": "一次删除多张图片，请求体为 keys 数组。"
+      },
+      "videoUpload": {
+        "title": "上传视频",
+        "desc": "上传 MP4 / WebM / MOV / MKV 等视频，单次最多 10 个、单文件最大 500 MB。上传后独立生成缩略图；transcode=1 时再异步转码为 HLS。"
+      },
+      "videoList": {
+        "title": "获取视频列表",
+        "desc": "设置 kind=video 获取视频。默认包含未转码、已完成和失败条目；processing=1 仅查看排队中或转码中的任务。"
+      },
+      "videoDelete": {
+        "title": "删除视频",
+        "desc": "通过视频 key 删除视频，同时清理缩略图和已生成的 HLS 播放列表与分片。"
+      },
+      "videoSearch": {
+        "title": "搜索视频",
+        "desc": "按文件名或存储路径搜索视频，支持分页、存储后端、上传来源和标签筛选；q 必填。"
+      },
+      "videoBatchDelete": {
+        "title": "批量删除视频",
+        "desc": "一次删除最多 100 个视频；每个视频的缩略图、HLS 播放列表与分片会一并清理。"
+      },
+      "fileUpload": {
+        "title": "上传文件",
+        "desc": "上传任意文件，单次最多 10 个、单文件最大 100 MB；禁止上传 HTML、HTM 和 SVG。"
+      },
+      "fileList": {
+        "title": "获取文件列表",
+        "desc": "设置 kind=file 分页获取文件床内容，支持搜索、存储后端、来源和标签筛选。"
+      },
+      "fileDelete": {
+        "title": "删除文件",
+        "desc": "通过文件 key 删除单个文件，操作不可恢复。"
+      },
+      "fileSearch": {
+        "title": "搜索文件",
+        "desc": "按文件名或存储路径搜索文件，设置 kind=file；支持分页、存储后端、上传来源和标签筛选。"
+      },
+      "fileBatchDelete": {
+        "title": "批量删除文件",
+        "desc": "一次删除最多 100 个文件，响应会分别返回删除成功和失败的 key。"
       },
       "twikoo": {
         "title": "twikoo 兼容上传",
@@ -1061,6 +1160,14 @@
       "previewKey": "视频路径",
       "transcodeNone": "未转码",
       "transcodeDone": "已完成（m3u8）",
+      "transcodeErrorFfmpegMissing": "无 FFmpeg",
+      "transcodeErrorPermissionDenied": "无文件权限",
+      "transcodeErrorUnknown": "原因未知",
+      "downloadMp4": "下载 MP4",
+      "downloadMp4Title": "下载 MP4 视频",
+      "downloadMp4Confirm": "将会合并视频切片到 MP4，是否继续？",
+      "downloadMp4Working": "正在合并视频切片，请稍候…",
+      "downloadMp4Failed": "视频合并失败，请稍后重试",
       "uploadTitle": "拖拽视频到此处上传",
       "uploadHint": "或点击选择视频文件，单次最多 10 个",
       "uploadFormats": "支持 MP4 / WebM / MOV / MKV 等，单个文件最大 100MB",

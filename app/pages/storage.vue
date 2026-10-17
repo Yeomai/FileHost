@@ -20,6 +20,17 @@ const deleteOpen = ref(false)
 const deleteTarget = ref<StorageBackendItem | null>(null)
 const deleteConfirmName = ref('')
 const deleting = ref(false)
+const clearStorageOpen = ref(false)
+const backupPanelKey = ref(0)
+
+function openClearStorage() {
+  clearStorageOpen.value = true
+}
+
+function handleStorageCleared() {
+  backupPanelKey.value += 1
+  void loadStorage()
+}
 
 const backupPanelRef = ref<{ applySyncDraft: (draft: { fromBackendId: string, toBackendId: string }) => void } | null>(null)
 
@@ -389,11 +400,36 @@ watch(isAuthenticated, async (authed) => {
 
           <StorageBackupPanel
             v-if="!storageData.envOverride"
+            :key="backupPanelKey"
             ref="backupPanelRef"
             :backends="storageData.backends"
           />
 
           <StorageSupportedBackends />
+
+          <section class="rounded-2xl border border-error/30 bg-error/5 p-5 sm:p-6">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <h2 class="flex items-center gap-2 text-base font-semibold text-error">
+                  <UIcon
+                    name="i-lucide-trash-2"
+                    class="size-5"
+                  />
+                  {{ t('storage.clearStorageTitle') }}
+                </h2>
+                <p class="mt-1 text-sm leading-relaxed text-muted">
+                  {{ t('storage.clearStorageDescription') }}
+                </p>
+              </div>
+              <UButton
+                :label="t('storage.clearStorage')"
+                icon="i-lucide-trash-2"
+                color="error"
+                class="shrink-0"
+                @click="openClearStorage"
+              />
+            </div>
+          </section>
         </template>
       </section>
     </AppShell>
@@ -447,5 +483,10 @@ watch(isAuthenticated, async (authed) => {
         </div>
       </template>
     </UModal>
+
+    <ClearStorageModal
+      v-model:open="clearStorageOpen"
+      @cleared="handleStorageCleared"
+    />
   </div>
 </template>

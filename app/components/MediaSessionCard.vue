@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const { formatFileSize } = useFileSize()
 const { t, locale } = useI18n()
+const transcodeFailureLabel = useTranscodeFailureLabel()
 const { copyFormat } = useUploadPreferences(props.kind)
 
 const copyFormatItems = computed(() => [
@@ -102,22 +103,11 @@ const presetLabel = computed(() => {
 <template>
   <div class="flex flex-col overflow-hidden rounded-xl border border-default bg-elevated shadow-sm">
     <div class="relative aspect-video shrink-0 overflow-hidden bg-muted">
-      <img
-        v-if="kind === 'video' && item.thumbUrl"
+      <VideoThumbnail
+        v-if="kind === 'video'"
         :src="thumbLink"
         :alt="item.originalName"
-        loading="lazy"
-        class="size-full object-cover"
-      >
-      <div
-        v-else-if="kind === 'video'"
-        class="flex size-full items-center justify-center"
-      >
-        <UIcon
-          name="i-lucide-film"
-          class="size-10 text-dimmed"
-        />
-      </div>
+      />
       <div
         v-else
         class="flex size-full items-center justify-center"
@@ -174,9 +164,10 @@ const presetLabel = computed(() => {
           color="error"
           variant="subtle"
           size="xs"
-          class="shrink-0"
+          class="max-w-48 shrink-0 truncate"
+          :title="transcodeFailureLabel(item.transcodeError)"
         >
-          {{ t('library.transcodeFailed') }}
+          {{ transcodeFailureLabel(item.transcodeError) }}
         </UBadge>
         <UBadge
           v-else-if="item.hlsUrl"

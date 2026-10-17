@@ -20,9 +20,18 @@ const docsUrl = computed(() =>
 
 const categories: { key: ApiDocCategory, labelKey: string }[] = [
   { key: 'image', labelKey: 'api.categories.image' },
+  { key: 'video', labelKey: 'api.categories.video' },
+  { key: 'file', labelKey: 'api.categories.file' },
   { key: 'extension', labelKey: 'api.categories.extension' },
   { key: 'system', labelKey: 'api.categories.system' }
 ]
+const openCategories = ref<Set<ApiDocCategory>>(
+  new Set(
+    categories
+      .filter(category => category.key !== 'video' && category.key !== 'file')
+      .map(category => category.key)
+  )
+)
 
 const filteredEndpoints = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -36,6 +45,17 @@ const filteredEndpoints = computed(() => {
 
 function endpointsForCategory(category: ApiDocCategory) {
   return filteredEndpoints.value.filter(endpoint => endpoint.category === category)
+}
+
+function isCategoryOpen(category: ApiDocCategory) {
+  return openCategories.value.has(category)
+}
+
+function toggleCategory(category: ApiDocCategory) {
+  const next = new Set(openCategories.value)
+  if (next.has(category)) next.delete(category)
+  else next.add(category)
+  openCategories.value = next
 }
 
 function onSelect(id: string) {
@@ -58,6 +78,15 @@ onMounted(() => {
   }
   window.addEventListener('keydown', onGlobalKeydown)
   onUnmounted(() => window.removeEventListener('keydown', onGlobalKeydown))
+})
+
+watch(search, (value) => {
+  if (!value.trim()) return
+  const next = new Set(openCategories.value)
+  for (const category of categories) {
+    if (endpointsForCategory(category.key).length) next.add(category.key)
+  }
+  openCategories.value = next
 })
 </script>
 
@@ -89,13 +118,24 @@ onMounted(() => {
         :key="category.key"
         class="mb-4"
       >
-        <p
+        <button
           v-if="endpointsForCategory(category.key).length"
-          class="mb-1.5 px-2 text-xs font-medium text-muted"
+          type="button"
+          class="mb-1.5 flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-medium text-muted transition-colors hover:bg-muted/40 hover:text-highlighted"
+          :aria-expanded="isCategoryOpen(category.key)"
+          @click="toggleCategory(category.key)"
         >
-          {{ t(category.labelKey) }}
-        </p>
-        <ul class="space-y-0.5">
+          <span>{{ t(category.labelKey) }}</span>
+          <UIcon
+            name="i-lucide-chevron-down"
+            class="size-3.5 transition-transform"
+            :class="isCategoryOpen(category.key) ? '' : '-rotate-90'"
+          />
+        </button>
+        <ul
+          v-show="isCategoryOpen(category.key)"
+          class="space-y-0.5"
+        >
           <li
             v-for="endpoint in endpointsForCategory(category.key)"
             :key="endpoint.id"

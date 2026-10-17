@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import type { FileListResponse } from '~/types/file'
 import type { MediaType, TranscodeStatus } from '../../utils/storage/types'
 import { requireApiOrAdminAuth, getImageUserFilter } from '../../utils/access'
@@ -21,7 +22,10 @@ import {
 } from '../../utils/image-query'
 import { listImages, searchImages } from '../../utils/storage'
 
-export default defineEventHandler(async (event) => {
+export async function handleFileList(
+  event: H3Event,
+  forcedKind?: MediaType
+): Promise<FileListResponse> {
   await requireApiOrAdminAuth(event)
 
   const query = getQuery(event)
@@ -51,7 +55,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // 文件床按类型分工：视频库看 media_type=video，文件库看 media_type=file
-  const kindRaw = typeof query.kind === 'string' ? query.kind.trim() : ''
+  const kindRaw = forcedKind ?? (typeof query.kind === 'string' ? query.kind.trim() : '')
   if (kindRaw && kindRaw !== 'file' && kindRaw !== 'video') {
     createApiError(event, 'INVALID_REQUEST', '无效的文件类型筛选', 400)
   }
@@ -111,6 +115,7 @@ export default defineEventHandler(async (event) => {
       ...(uploadSource === 'web' || uploadSource === 'api' ? { uploadSource } : {}),
       transcodeStatus: stored.transcodeStatus ?? 'none',
       transcodeProgress: stored.transcodeProgress ?? 0,
+      ...(stored.transcodeError ? { transcodeError: stored.transcodeError } : {}),
       ...(stored.transcodePreset ? { transcodePreset: stored.transcodePreset } : {}),
       ...(stored.sourceDeleted ? { sourceDeleted: true } : {}),
       ...(stored.thumbKey
@@ -138,4 +143,6 @@ export default defineEventHandler(async (event) => {
   }
 
   return response
-})
+}
+
+export default defineEventHandler(handleFileList)

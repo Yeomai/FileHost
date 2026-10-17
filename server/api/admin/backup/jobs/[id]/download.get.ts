@@ -6,13 +6,13 @@ import { getBackupJob } from '../../../../../utils/backup/jobs'
 import { BACKUP_ARCHIVE_EXT } from '../../../../../utils/backup/paths'
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id) {
     createApiError(event, 'INVALID_REQUEST', '缺少任务 ID', 400)
   }
 
-  const job = getBackupJob(id)
+  const job = getBackupJob(id, user.id)
   if (!job || job.type !== 'full_export' || job.status !== 'done' || !job.outputPath) {
     createApiError(event, 'INVALID_REQUEST', '可下载的备份不存在', 404)
   }

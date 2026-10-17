@@ -4,13 +4,14 @@ import { createApiError } from '../../../utils/api-error'
 import { serializeBackupJob } from '../../../utils/backup/api'
 import { previewFullRestore } from '../../../utils/backup/full-restore'
 import { startFullRestoreJob } from '../../../utils/backup/runner'
+import { listAllBackupJobsForUser } from '../../../utils/backup/jobs'
 import {
   BACKUP_ARCHIVE_EXT,
   getBackupsDir,
   getBackupStagingDir,
   isSafeBackupFilename
 } from '../../../utils/backup/paths'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { promises as fs } from 'node:fs'
 
 interface RestoreBody {
@@ -19,7 +20,7 @@ interface RestoreBody {
   dryRun?: boolean
 }
 
-async function resolveRestoreInput(event: H3Event): Promise<{
+async function resolveRestoreInput(event: H3Event, userId: number): Promise<{
   archivePath: string
   body: RestoreBody
   cleanup?: () => Promise<void>
@@ -71,6 +72,19 @@ async function resolveRestoreInput(event: H3Event): Promise<{
   if (!body?.archiveName || !isSafeBackupFilename(body.archiveName)) {
     createApiError(event, 'INVALID_REQUEST', '请选择有效的备份文件', 400)
   }
+  const allowedArchives = new Set(
+    listAllBackupJobsForUser(userId).flatMap((job) => {
+      const names: string[] = []
+      if (job.outputPath) names.push(basename(job.outputPath))
+      if (typeof job.payload.archivePath === 'string') {
+        names.push(basename(job.payload.archivePath))
+      }
+      return names
+    })
+  )
+  if (!allowedArchives.has(body.archiveName)) {
+    createApiError(event, 'INVALID_REQUEST', '备份文件不存在', 404)
+  }
   const archivePath = join(getBackupsDir(), body.archiveName)
   try {
     await fs.access(archivePath)
@@ -81,9 +95,9 @@ async function resolveRestoreInput(event: H3Event): Promise<{
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
 
-  const { archivePath, body, cleanup } = await resolveRestoreInput(event)
+  const { archivePath, body, cleanup } = await resolveRestoreInput(event, user.id)
 
   const conflictMode = body.conflictMode === 'skip' ? 'skip' : 'overwrite'
 
@@ -97,7 +111,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const job = startFullRestoreJob(archivePath, conflictMode)
+    const job = startFullRestoreJob(archivePath, conflictMode, user.id)
     return { job: serializeBackupJob(job) }
   } catch (error) {
     if (error instanceof Error && error.message === 'BACKUP_JOB_RUNNING') {

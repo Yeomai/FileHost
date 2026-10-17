@@ -8,7 +8,10 @@ export type ErrorCode
     | 'UNSUPPORTED_FILE_TYPE'
     | 'INVALID_FILE_SIGNATURE'
     | 'INVALID_IMAGE_KEY'
+    | 'INVALID_VIDEO_KEY'
     | 'IMAGE_NOT_FOUND'
+    | 'HLS_NOT_FOUND'
+    | 'HLS_REMUX_FAILED'
     | 'UPLOAD_FAILED'
     | 'DELETE_FAILED'
 

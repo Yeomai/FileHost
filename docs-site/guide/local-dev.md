@@ -6,6 +6,7 @@
 
 - Node.js **22**
 - npm **11**（与 `package.json` 中 `packageManager` 一致）
+- FFmpeg（视频缩略图与 HLS 转码；未安装时视频仍可上传，但使用占位封面）
 
 ## 启动
 

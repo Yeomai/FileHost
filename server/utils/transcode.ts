@@ -5,10 +5,11 @@ import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import sharp from 'sharp'
 import { getDataDir } from './data-dir'
 import {
   listAllImageIndexRows,
-  listPendingTranscodeKeys,
+  listPendingTranscodeRows,
   listTranscodedSourceRows,
   updateImageTranscode
 } from './image-index'
@@ -37,6 +38,9 @@ import {
 
 /** HLS 分片时长（秒） */
 const HLS_SEGMENT_TIME = 6
+const HLS_DOWNLOAD_PREFIX = 'pichost-hls-download-'
+export const HLS_DOWNLOAD_RETENTION_MS = 60 * 60 * 1000
+const HLS_DOWNLOAD_MARKER = '.expires'
 
 export const DEFAULT_TRANSCODE_CONCURRENCY = 1
 export const DEFAULT_TRANSCODE_THREADS = 1
@@ -55,6 +59,21 @@ export const DEFAULT_TRANSCODE_PRESET: TranscodePreset = 'veryfast'
 export const DEFAULT_TRANSCODE_BITRATE_PERCENT = 80
 export const MIN_TRANSCODE_BITRATE_PERCENT = 10
 export const MAX_TRANSCODE_BITRATE_PERCENT = 100
+
+export interface TranscodeJobOptions {
+  preset: TranscodePreset
+  bitratePercent: number
+}
+
+/** 将底层错误归纳成适合界面展示的简短原因 */
+export function summarizeTranscodeFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/spawn ffmpeg ENOENT|ffmpeg.*(not found|ENOENT)|ENOENT.*ffmpeg/i.test(message)) {
+    return 'ffmpeg-missing'
+  }
+  if (/permission denied/i.test(message)) return 'permission-denied'
+  return 'unknown'
+}
 
 export function getTranscodeBitratePercent(): number {
   return parseBoundedInt(
@@ -82,6 +101,21 @@ function parseBoundedInt(
   const value = Number(raw)
   if (!Number.isInteger(value) || value < min || value > max) return fallback
   return value
+}
+
+function resolveTranscodeJobOptions(
+  options: Partial<TranscodeJobOptions> = {}
+): TranscodeJobOptions {
+  const settings = getTranscodeSettings()
+  const bitratePercent = Number.isInteger(options.bitratePercent)
+    && options.bitratePercent! >= MIN_TRANSCODE_BITRATE_PERCENT
+    && options.bitratePercent! <= MAX_TRANSCODE_BITRATE_PERCENT
+    ? options.bitratePercent!
+    : settings.bitratePercent
+  return {
+    preset: options.preset ?? settings.preset,
+    bitratePercent
+  }
 }
 
 export interface TranscodeSettings {
@@ -162,6 +196,19 @@ export function thumbKeyFor(videoKey: string): string {
   return `${stripExtension(videoKey)}.webp`
 }
 
+/** HLS 播放列表中的相对分片文件名 */
+export function hlsSegmentNames(playlistText: string): string[] {
+  const names = new Set<string>()
+  for (const line of playlistText.split('\n')) {
+    const name = line.trim()
+    if (!name || name.startsWith('#') || name === '.' || name === '..' || /[/\\]/.test(name)) {
+      continue
+    }
+    names.add(name)
+  }
+  return [...names]
+}
+
 function runThumbFfmpeg(inputPath: string, outputPath: string, seek: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('ffmpeg', [
@@ -172,8 +219,7 @@ function runThumbFfmpeg(inputPath: string, outputPath: string, seek: number): Pr
       '-i', inputPath,
       '-frames:v', '1',
       '-vf', 'scale=640:-2',
-      '-c:v', 'libwebp',
-      '-quality', '80',
+      '-c:v', 'png',
       outputPath
     ], { windowsHide: true })
 
@@ -203,6 +249,7 @@ export async function generateVideoThumbnail(videoKey: string): Promise<string |
 
   const workDir = join(tmpdir(), `pichost-thumb-${randomUUID()}`)
   const inputPath = join(workDir, `input.${extensionOf(videoKey)}`)
+  const framePath = join(workDir, 'thumb.png')
   const outputPath = join(workDir, 'thumb.webp')
 
   await fs.mkdir(workDir, { recursive: true })
@@ -211,11 +258,12 @@ export async function generateVideoThumbnail(videoKey: string): Promise<string |
     await streamToFile(await createImageStream(videoKey), inputPath)
 
     try {
-      await runThumbFfmpeg(inputPath, outputPath, 1)
+      await runThumbFfmpeg(inputPath, framePath, 1)
     } catch {
-      await runThumbFfmpeg(inputPath, outputPath, 0)
+      await runThumbFfmpeg(inputPath, framePath, 0)
     }
 
+    await sharp(framePath).webp({ quality: 80 }).toFile(outputPath)
     const bytes = await fs.readFile(outputPath)
     const thumbKey = thumbKeyFor(videoKey)
     const backend = await getBackendForKey(videoKey)
@@ -318,9 +366,10 @@ function runFfmpeg(
   outputDir: string,
   sourceBitrate: number,
   sourceAudioBitrate: number,
+  options: TranscodeJobOptions,
   onProgressUs: (outTimeUs: number) => void
 ): Promise<void> {
-  const { preset, bitratePercent } = getTranscodeSettings()
+  const { preset, bitratePercent } = options
 
   // 音频不放大也不压缩：跟随源音轨码率（读不到时才用 128k）
   const audioBitrate = sourceAudioBitrate > 0
@@ -419,12 +468,96 @@ async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+function remuxPlaylistToMp4(inputPath: string, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffmpeg', [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-y',
+      '-i', inputPath,
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      outputPath
+    ], { windowsHide: true })
+
+    let stderr = ''
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      const detail = stderr.trim().split('\n').filter(Boolean).pop()
+      reject(new Error(detail || `ffmpeg 退出码 ${code}`))
+    })
+  })
+}
+
+/** 下载 HLS 清单和分片到临时目录，不转码，重新封装为 MP4 */
+export async function remuxHlsToMp4(playlistKey: string, workDir: string): Promise<string> {
+  if (!validateStorageKey(playlistKey) || !playlistKey.endsWith('.m3u8')) {
+    throw new Error('无效的 HLS 播放列表')
+  }
+
+  const playlistText = await streamToString(await createImageStream(playlistKey))
+  const segmentNames = hlsSegmentNames(playlistText)
+  if (!segmentNames.length) throw new Error('HLS 播放列表没有视频分片')
+
+  const dirKey = playlistKey.slice(0, playlistKey.lastIndexOf('/'))
+  await fs.mkdir(workDir, { recursive: true })
+  await fs.writeFile(join(workDir, 'index.m3u8'), playlistText)
+
+  for (const name of segmentNames) {
+    const segmentKey = `${dirKey}/${name}`
+    if (!validateStorageKey(segmentKey)) throw new Error('HLS 分片路径无效')
+    await streamToFile(await createImageStream(segmentKey), join(workDir, name))
+  }
+
+  const outputPath = join(workDir, 'video.mp4')
+  await remuxPlaylistToMp4(join(workDir, 'index.m3u8'), outputPath)
+  return outputPath
+}
+
+/** 标记 HLS 下载临时文件，满一小时后允许清理 */
+export async function markHlsDownloadForCleanup(
+  workDir: string,
+  expiresAt = Date.now() + HLS_DOWNLOAD_RETENTION_MS
+): Promise<void> {
+  await fs.writeFile(join(workDir, HLS_DOWNLOAD_MARKER), String(expiresAt))
+}
+
+/** 删除已经到达过期时间的 HLS 下载临时目录 */
+export async function cleanupExpiredHlsDownloads(now = Date.now()): Promise<number> {
+  let removed = 0
+  try {
+    const entries = await fs.readdir(tmpdir(), { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith(HLS_DOWNLOAD_PREFIX)) continue
+      const path = join(tmpdir(), entry.name)
+      const expiresAt = Number(
+        await fs.readFile(join(path, HLS_DOWNLOAD_MARKER), 'utf8').catch(() => '')
+      )
+      if (!Number.isFinite(expiresAt) || expiresAt > now) continue
+      await fs.rm(path, { recursive: true, force: true })
+      removed++
+    }
+  } catch {
+    // 清理失败不影响新下载
+  }
+  return removed
+}
+
 /** 把视频转成 HLS 并写入存储，返回播放列表 key 与产物总大小 */
 export async function transcodeVideoToHls(
-  videoKey: string
+  videoKey: string,
+  jobOptions?: Partial<TranscodeJobOptions>
 ): Promise<{ playlistKey: string, totalBytes: number }> {
   const stored = await headImage(videoKey)
   if (!stored) throw new Error('视频不存在')
+  const options = resolveTranscodeJobOptions(jobOptions)
 
   const workDir = join(tmpdir(), `pichost-hls-${randomUUID()}`)
   const inputPath = join(workDir, `input.${extensionOf(videoKey)}`)
@@ -445,17 +578,25 @@ export async function transcodeVideoToHls(
     const sourceAudioBitrate = await probeAudioBitrate(inputPath)
     let lastProgressAt = 0
 
-    await runFfmpeg(videoKey, inputPath, outputDir, sourceBitrate, sourceAudioBitrate, (outTimeUs) => {
-      if (!durationSec) return
-      const now = Date.now()
-      if (now - lastProgressAt < 1000) return
-      lastProgressAt = now
-      const percent = Math.round((outTimeUs / (durationSec * 1_000_000)) * 100)
-      updateImageTranscode(videoKey, {
-        status: 'running',
-        progress: Math.min(99, Math.max(1, percent))
-      })
-    })
+    await runFfmpeg(
+      videoKey,
+      inputPath,
+      outputDir,
+      sourceBitrate,
+      sourceAudioBitrate,
+      options,
+      (outTimeUs) => {
+        if (!durationSec) return
+        const now = Date.now()
+        if (now - lastProgressAt < 1000) return
+        lastProgressAt = now
+        const percent = Math.round((outTimeUs / (durationSec * 1_000_000)) * 100)
+        updateImageTranscode(videoKey, {
+          status: 'running',
+          progress: Math.min(99, Math.max(1, percent))
+        })
+      }
+    )
 
     const uploadedAt = new Date().toISOString()
 
@@ -503,10 +644,8 @@ export async function removeHlsArtifacts(videoKey: string): Promise<void> {
   const dirKey = stripExtension(videoKey)
   const text = await streamToString(await createImageStream(playlistKey))
 
-  for (const line of text.split('\n')) {
-    const name = line.trim()
-    if (!name || name.startsWith('#')) continue
-    const segmentKey = `${dirKey}/${basename(name)}`
+  for (const name of hlsSegmentNames(text)) {
+    const segmentKey = `${dirKey}/${name}`
     if (!validateStorageKey(segmentKey)) continue
     await deleteImage(segmentKey).catch(() => {})
   }
@@ -520,15 +659,20 @@ export async function removeHlsArtifacts(videoKey: string): Promise<void> {
   }
 }
 
-const queue: string[] = []
+interface QueuedTranscode extends TranscodeJobOptions {
+  videoKey: string
+}
+
+const queue: QueuedTranscode[] = []
 const queued = new Set<string>()
 let activeCount = 0
 
-async function processOne(videoKey: string): Promise<void> {
+async function processOne(job: QueuedTranscode): Promise<void> {
+  const { videoKey } = job
   updateImageTranscode(videoKey, { status: 'running' })
 
   try {
-    const { playlistKey, totalBytes } = await transcodeVideoToHls(videoKey)
+    const { playlistKey, totalBytes } = await transcodeVideoToHls(videoKey, job)
 
     // 转码成功后源文件不再需要，直接删除以节省空间
     const backend = await getBackendForKey(videoKey)
@@ -543,7 +687,10 @@ async function processOne(videoKey: string): Promise<void> {
     })
     logInfo('transcode done', { key: videoKey, hlsKey: playlistKey })
   } catch (error) {
-    updateImageTranscode(videoKey, { status: 'failed' })
+    updateImageTranscode(videoKey, {
+      status: 'failed',
+      error: summarizeTranscodeFailure(error)
+    })
     logException('transcode failed', error, { key: videoKey })
   }
 }
@@ -551,10 +698,11 @@ async function processOne(videoKey: string): Promise<void> {
 /** 按设置的并发数消费队列（默认 1，即串行） */
 function drain(): void {
   while (queue.length && activeCount < getTranscodeConcurrency()) {
-    const key = queue.shift()!
+    const job = queue.shift()!
+    const key = job.videoKey
     activeCount += 1
 
-    void processOne(key).finally(() => {
+    void processOne(job).finally(() => {
       activeCount -= 1
       queued.delete(key)
       drain()
@@ -562,25 +710,28 @@ function drain(): void {
   }
 }
 
-export function enqueueTranscode(videoKey: string): void {
+export function enqueueTranscode(
+  videoKey: string,
+  options: Partial<TranscodeJobOptions> = {}
+): void {
   if (!validateVideoKey(videoKey) || queued.has(videoKey)) return
+  const job = resolveTranscodeJobOptions(options)
   queued.add(videoKey)
-  queue.push(videoKey)
+  queue.push({ videoKey, ...job })
   // 记录本视频使用的档位，便于上传页展示
-  const preset = getTranscodeSettings().preset
   updateImageTranscode(videoKey, {
     status: 'pending',
     // 压缩档带上百分比，例如 compress:80
-    preset: preset === 'compress'
-      ? `compress:${getTranscodeBitratePercent()}`
-      : preset
+    preset: job.preset === 'compress'
+      ? `compress:${job.bitratePercent}`
+      : job.preset
   })
   drain()
 }
 
 /** 取消排队中或正在转码的任务（删除视频时调用） */
 export function cancelTranscode(videoKey: string): void {
-  const index = queue.indexOf(videoKey)
+  const index = queue.findIndex(job => job.videoKey === videoKey)
   if (index >= 0) queue.splice(index, 1)
   queued.delete(videoKey)
 
@@ -616,8 +767,14 @@ export async function cleanupTranscodedSources(): Promise<number> {
 
 /** 启动时把上次中断的任务重新排队 */
 export function resumePendingTranscodes(): void {
-  for (const key of listPendingTranscodeKeys()) {
-    enqueueTranscode(key)
+  for (const row of listPendingTranscodeRows()) {
+    const [presetName, bitrateRaw] = (row.preset ?? '').split(':')
+    const preset = parseTranscodePreset(presetName)
+    const bitratePercent = Number(bitrateRaw)
+    enqueueTranscode(row.key, {
+      ...(preset ? { preset } : {}),
+      ...(Number.isInteger(bitratePercent) ? { bitratePercent } : {})
+    })
   }
 }
 

@@ -11,10 +11,13 @@ import { access } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { loadServerModule } from './backup-cli-loader.mjs'
 
-const { ensureBackupSchema } = loadServerModule('utils/backup/schema.ts')
-const { createBackupJob, getBackupJob } = loadServerModule('utils/backup/jobs.ts')
-const { previewFullRestore } = loadServerModule('utils/backup/full-restore.ts')
-const { runFullRestoreJob } = loadServerModule('utils/backup/full-restore.ts')
+const {
+  ensureBackupSchema,
+  createBackupJob,
+  getBackupJob,
+  previewFullRestore,
+  runFullRestoreJob
+} = loadServerModule('cli/backup-runtime.ts')
 
 function usage() {
   console.error('Usage: backup-restore <archive-path> [--overwrite]')
@@ -41,7 +44,7 @@ async function main() {
 
   ensureBackupSchema()
   const preview = await previewFullRestore(archivePath)
-  console.log(`[PicHost] Preview: ${preview.imageCount} images, ${preview.newImages} new, ${preview.conflictingImages} conflicts`)
+  console.log(`[PicHost] Preview: ${preview.imageCount} media items, ${preview.newImages} new files, ${preview.conflictingImages} conflicting files`)
 
   const job = createBackupJob({
     type: 'full_restore',
