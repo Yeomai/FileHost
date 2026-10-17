@@ -55,8 +55,12 @@ interface SettingsResponse {
   capApiEndpoint: string
   capSecret: string
   appVersion: string
-  uploadMaxFileSizeMb: number
-  uploadMaxFileSizeMbSource: PolicySource
+  uploadImageMaxFileSizeMb: number
+  uploadImageMaxFileSizeMbSource: PolicySource
+  uploadVideoMaxFileSizeMb: number
+  uploadVideoMaxFileSizeMbSource: PolicySource
+  uploadFileMaxFileSizeMb: number
+  uploadFileMaxFileSizeMbSource: PolicySource
   allowedMimeTypes: MimeType[]
   allowedMimeTypesSource: PolicySource
   allowedVideoExtensions: VideoExtension[]
@@ -185,7 +189,9 @@ const capApiEndpointDraft = ref('')
 const capSecretDraft = ref('')
 const domainSeparationSaveConfirmOpen = ref(false)
 
-const uploadMaxFileSizeMbDraft = ref(10)
+const uploadImageMaxFileSizeMbDraft = ref(10)
+const uploadVideoMaxFileSizeMbDraft = ref(500)
+const uploadFileMaxFileSizeMbDraft = ref(100)
 const allowedMimeTypesDraft = ref<MimeType[]>([])
 const allowedVideoExtensionsDraft = ref<VideoExtension[]>([])
 const forbiddenFileExtensionsDraft = ref<string[]>([])
@@ -242,7 +248,9 @@ const hasServerChanges = computed(() => {
     || turnstileSecretKeyDraft.value !== settings.value.turnstileSecretKey
     || capApiEndpointDraft.value !== settings.value.capApiEndpoint
     || capSecretDraft.value !== settings.value.capSecret
-    || uploadMaxFileSizeMbDraft.value !== settings.value.uploadMaxFileSizeMb
+    || uploadImageMaxFileSizeMbDraft.value !== settings.value.uploadImageMaxFileSizeMb
+    || uploadVideoMaxFileSizeMbDraft.value !== settings.value.uploadVideoMaxFileSizeMb
+    || uploadFileMaxFileSizeMbDraft.value !== settings.value.uploadFileMaxFileSizeMb
     || !mimeListsEqual(allowedMimeTypesDraft.value, settings.value.allowedMimeTypes)
     || !mimeListsEqual(allowedVideoExtensionsDraft.value, settings.value.allowedVideoExtensions)
     || !mimeListsEqual(forbiddenFileExtensionsDraft.value, settings.value.forbiddenFileExtensions)
@@ -320,7 +328,9 @@ function applySettings(data: SettingsResponse) {
   turnstileSecretKeyDraft.value = data.turnstileSecretKey
   capApiEndpointDraft.value = data.capApiEndpoint
   capSecretDraft.value = data.capSecret
-  uploadMaxFileSizeMbDraft.value = data.uploadMaxFileSizeMb
+  uploadImageMaxFileSizeMbDraft.value = data.uploadImageMaxFileSizeMb
+  uploadVideoMaxFileSizeMbDraft.value = data.uploadVideoMaxFileSizeMb
+  uploadFileMaxFileSizeMbDraft.value = data.uploadFileMaxFileSizeMb
   allowedMimeTypesDraft.value = [...data.allowedMimeTypes]
   allowedVideoExtensionsDraft.value = [...data.allowedVideoExtensions]
   forbiddenFileExtensionsDraft.value = [...data.forbiddenFileExtensions]
@@ -423,7 +433,9 @@ async function performSaveServerSettings() {
       turnstileSecretKey: turnstileSecretKeyDraft.value,
       capApiEndpoint: capApiEndpointDraft.value,
       capSecret: capSecretDraft.value,
-      uploadMaxFileSizeMb: uploadMaxFileSizeMbDraft.value,
+      uploadImageMaxFileSizeMb: uploadImageMaxFileSizeMbDraft.value,
+      uploadVideoMaxFileSizeMb: uploadVideoMaxFileSizeMbDraft.value,
+      uploadFileMaxFileSizeMb: uploadFileMaxFileSizeMbDraft.value,
       allowedMimeTypes: allowedMimeTypesDraft.value,
       allowedVideoExtensions: allowedVideoExtensionsDraft.value,
       forbiddenFileExtensions: forbiddenFileExtensionsDraft.value,
@@ -626,7 +638,9 @@ watch(isAdmin, () => {
                   >
                     <SettingsGroup>
                       <SettingsUploadPolicyFields
-                        v-model:upload-max-file-size-mb="uploadMaxFileSizeMbDraft"
+                        v-model:upload-image-max-file-size-mb="uploadImageMaxFileSizeMbDraft"
+                        v-model:upload-video-max-file-size-mb="uploadVideoMaxFileSizeMbDraft"
+                        v-model:upload-file-max-file-size-mb="uploadFileMaxFileSizeMbDraft"
                         v-model:allowed-mime-types="allowedMimeTypesDraft"
                         v-model:allowed-video-extensions="allowedVideoExtensionsDraft"
                         v-model:forbidden-file-extensions="forbiddenFileExtensionsDraft"
@@ -634,7 +648,9 @@ watch(isAdmin, () => {
                         v-model:upload-rate-token-max="uploadRateTokenMaxDraft"
                         v-model:upload-rate-window-minutes="uploadRateWindowMinutesDraft"
                         part="upload-preference"
-                        :upload-max-file-size-mb-source="settings.uploadMaxFileSizeMbSource"
+                        :upload-image-max-file-size-mb-source="settings.uploadImageMaxFileSizeMbSource"
+                        :upload-video-max-file-size-mb-source="settings.uploadVideoMaxFileSizeMbSource"
+                        :upload-file-max-file-size-mb-source="settings.uploadFileMaxFileSizeMbSource"
                         :allowed-mime-types-source="settings.allowedMimeTypesSource"
                         :allowed-video-extensions-source="settings.allowedVideoExtensionsSource"
                         :forbidden-file-extensions-source="settings.forbiddenFileExtensionsSource"

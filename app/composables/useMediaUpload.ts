@@ -2,6 +2,7 @@ import type { UploadProgressItem } from '~/types/image'
 import type { FileItem, FileListResponse, FileUploadResponse } from '~/types/file'
 import type { CopyFormat, UploadMediaKind } from './useUploadPreferences'
 import { isUnauthorizedError } from './useAuth'
+import { normalizeUploadTagNames } from './useUploadPreferences'
 
 const MAX_FILES = 10
 
@@ -54,10 +55,9 @@ export function useMediaUpload(kind: UploadMediaKind) {
     autoCopyMarkdown,
     copyFormat,
     transcodeToHls,
-    lastTagIds,
+    uploadTagNames,
     loadPreferences
   } = useUploadPreferences(kind)
-  const { items: tagItems, fetchTags } = useTags()
 
   const uploading = ref(false)
   const progressItems = ref<UploadProgressItem[]>([])
@@ -209,6 +209,19 @@ export function useMediaUpload(kind: UploadMediaKind) {
         })
         return false
       }
+      const maxFileSizeMb = kind === 'video'
+        ? (currentPolicy?.videoMaxFileSizeMb ?? 500)
+        : (currentPolicy?.fileMaxFileSizeMb ?? 100)
+      if (file.size > maxFileSizeMb * 1024 * 1024) {
+        toast.add({
+          title: t('files.fileTooLarge', {
+            name: file.name,
+            limit: maxFileSizeMb
+          }),
+          color: 'error'
+        })
+        return false
+      }
       return true
     })
     if (!acceptedFiles.length) return
@@ -234,14 +247,9 @@ export function useMediaUpload(kind: UploadMediaKind) {
       if (kind === 'video' && transcodeToHls.value) {
         formData.append('transcode', '1')
       }
-      if (lastTagIds.value.length) {
-        await fetchTags()
-        const names = lastTagIds.value
-          .map(id => tagItems.value.find(tag => tag.id === id)?.name)
-          .filter((name): name is string => Boolean(name))
-        if (names.length) {
-          formData.append('tagNames', JSON.stringify(names))
-        }
+      const tagNames = normalizeUploadTagNames(uploadTagNames.value).join(',')
+      if (tagNames) {
+        formData.append('tagNames', tagNames)
       }
 
       progressItems.value = progressItems.value.map(item => ({

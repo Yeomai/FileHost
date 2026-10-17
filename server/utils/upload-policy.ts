@@ -10,6 +10,9 @@ import { getActiveBackendRow } from './storage/resolver'
 import { TELEGRAM_MAX_FILE_BYTES } from './storage/telegram'
 
 export const SETTINGS_UPLOAD_MAX_FILE_SIZE_MB = 'upload_max_file_size_mb'
+export const SETTINGS_UPLOAD_IMAGE_MAX_FILE_SIZE_MB = 'upload_image_max_file_size_mb'
+export const SETTINGS_UPLOAD_VIDEO_MAX_FILE_SIZE_MB = 'upload_video_max_file_size_mb'
+export const SETTINGS_UPLOAD_FILE_MAX_FILE_SIZE_MB = 'upload_file_max_file_size_mb'
 export const SETTINGS_ALLOWED_MIME_TYPES = 'allowed_mime_types'
 export const SETTINGS_ALLOWED_VIDEO_EXTENSIONS = 'allowed_video_extensions'
 export const SETTINGS_FORBIDDEN_FILE_EXTENSIONS = 'forbidden_file_extensions'
@@ -21,8 +24,14 @@ export const SETTINGS_LOGIN_RATE_WINDOW_MINUTES = 'login_rate_window_minutes'
 export const SETTINGS_PRESERVE_ORIGINAL_UPLOAD = 'preserve_original_upload'
 
 export const DEFAULT_UPLOAD_MAX_FILE_SIZE_MB = 10
-export const MIN_UPLOAD_MAX_FILE_SIZE_MB = 1
+export const MIN_UPLOAD_MAX_FILE_SIZE_MB = 0
 export const MAX_UPLOAD_MAX_FILE_SIZE_MB = 100
+export const DEFAULT_UPLOAD_IMAGE_MAX_FILE_SIZE_MB = 10
+export const DEFAULT_UPLOAD_VIDEO_MAX_FILE_SIZE_MB = 500
+export const DEFAULT_UPLOAD_FILE_MAX_FILE_SIZE_MB = 100
+export const MAX_UPLOAD_IMAGE_MAX_FILE_SIZE_MB = 100
+export const MAX_UPLOAD_VIDEO_MAX_FILE_SIZE_MB = 2048
+export const MAX_UPLOAD_FILE_MAX_FILE_SIZE_MB = 1024
 
 export const DEFAULT_UPLOAD_RATE_IP_MAX = 60
 export const DEFAULT_UPLOAD_RATE_TOKEN_MAX = 120
@@ -78,6 +87,41 @@ export const FORBIDDEN_FILE_EXTENSION_OPTIONS = [
 }))
 
 export type PolicySource = 'env' | 'db' | 'default'
+export type UploadMaxFileSizeKind = 'image' | 'video' | 'file'
+
+const uploadMaxFileSizeConfig: Record<UploadMaxFileSizeKind, {
+  setting: string
+  env: string
+  fallbackEnv?: string
+  legacySetting?: string
+  defaultMb: number
+  maxMb: number
+  label: string
+}> = {
+  image: {
+    setting: SETTINGS_UPLOAD_IMAGE_MAX_FILE_SIZE_MB,
+    env: 'UPLOAD_IMAGE_MAX_FILE_SIZE_MB',
+    fallbackEnv: 'UPLOAD_MAX_FILE_SIZE_MB',
+    legacySetting: SETTINGS_UPLOAD_MAX_FILE_SIZE_MB,
+    defaultMb: DEFAULT_UPLOAD_IMAGE_MAX_FILE_SIZE_MB,
+    maxMb: MAX_UPLOAD_IMAGE_MAX_FILE_SIZE_MB,
+    label: '图片'
+  },
+  video: {
+    setting: SETTINGS_UPLOAD_VIDEO_MAX_FILE_SIZE_MB,
+    env: 'UPLOAD_VIDEO_MAX_FILE_SIZE_MB',
+    defaultMb: DEFAULT_UPLOAD_VIDEO_MAX_FILE_SIZE_MB,
+    maxMb: MAX_UPLOAD_VIDEO_MAX_FILE_SIZE_MB,
+    label: '视频'
+  },
+  file: {
+    setting: SETTINGS_UPLOAD_FILE_MAX_FILE_SIZE_MB,
+    env: 'UPLOAD_FILE_MAX_FILE_SIZE_MB',
+    defaultMb: DEFAULT_UPLOAD_FILE_MAX_FILE_SIZE_MB,
+    maxMb: MAX_UPLOAD_FILE_MAX_FILE_SIZE_MB,
+    label: '文件'
+  }
+}
 
 function readEnv(name: string): string {
   try {
@@ -98,6 +142,17 @@ function parsePositiveInt(raw: string, min: number, max: number): number | null 
 
 export function parseUploadMaxFileSizeMb(raw: string): number | null {
   return parsePositiveInt(raw, MIN_UPLOAD_MAX_FILE_SIZE_MB, MAX_UPLOAD_MAX_FILE_SIZE_MB)
+}
+
+export function parseUploadMaxFileSizeMbForKind(
+  raw: string,
+  kind: UploadMaxFileSizeKind
+): number | null {
+  return parsePositiveInt(
+    raw,
+    MIN_UPLOAD_MAX_FILE_SIZE_MB,
+    uploadMaxFileSizeConfig[kind].maxMb
+  )
 }
 
 export function parseUploadRateIpMax(raw: string): number | null {
@@ -208,9 +263,36 @@ export function serializeForbiddenFileExtensions(extensions: readonly string[]):
     .join(',')
 }
 
-function getUploadMaxFileSizeMbSource(): PolicySource {
-  if (getSetting(SETTINGS_UPLOAD_MAX_FILE_SIZE_MB) !== null) return 'db'
-  if (parseUploadMaxFileSizeMb(readEnv('UPLOAD_MAX_FILE_SIZE_MB')) !== null) return 'env'
+function getConfiguredUploadMaxFileSizeMbFromDb(kind: UploadMaxFileSizeKind): number | null {
+  const config = uploadMaxFileSizeConfig[kind]
+  const direct = getSetting(config.setting)
+  if (direct !== null) {
+    const parsed = parseUploadMaxFileSizeMbForKind(direct, kind)
+    if (parsed !== null) return parsed
+  }
+  if (config.legacySetting) {
+    const legacy = getSetting(config.legacySetting)
+    if (legacy !== null) {
+      const parsed = parseUploadMaxFileSizeMbForKind(legacy, kind)
+      if (parsed !== null) return parsed
+    }
+  }
+  return null
+}
+
+function getConfiguredUploadMaxFileSizeMbFromEnv(kind: UploadMaxFileSizeKind): number | null {
+  const config = uploadMaxFileSizeConfig[kind]
+  const direct = parseUploadMaxFileSizeMbForKind(readEnv(config.env), kind)
+  if (direct !== null) return direct
+  if (config.fallbackEnv) {
+    return parseUploadMaxFileSizeMbForKind(readEnv(config.fallbackEnv), kind)
+  }
+  return null
+}
+
+function getUploadMaxFileSizeMbSource(kind: UploadMaxFileSizeKind): PolicySource {
+  if (getConfiguredUploadMaxFileSizeMbFromDb(kind) !== null) return 'db'
+  if (getConfiguredUploadMaxFileSizeMbFromEnv(kind) !== null) return 'env'
   return 'default'
 }
 
@@ -270,28 +352,27 @@ function getPreserveOriginalUploadSource(): PolicySource {
   return 'default'
 }
 
-export function getUploadMaxFileSizeMb(): number {
-  const dbRaw = getSetting(SETTINGS_UPLOAD_MAX_FILE_SIZE_MB)
-  if (dbRaw !== null) {
-    const parsed = parseUploadMaxFileSizeMb(dbRaw)
-    if (parsed !== null) return parsed
-  }
-  const fromEnv = parseUploadMaxFileSizeMb(readEnv('UPLOAD_MAX_FILE_SIZE_MB'))
-  if (fromEnv !== null) return fromEnv
-  return DEFAULT_UPLOAD_MAX_FILE_SIZE_MB
+export function getUploadMaxFileSizeMb(kind: UploadMaxFileSizeKind = 'image'): number {
+  return getConfiguredUploadMaxFileSizeMbFromDb(kind)
+    ?? getConfiguredUploadMaxFileSizeMbFromEnv(kind)
+    ?? uploadMaxFileSizeConfig[kind].defaultMb
 }
 
-export function getMaxFileSizeBytes(): number {
-  return getUploadMaxFileSizeMb() * 1024 * 1024
+export function getMaxFileSizeBytes(kind: UploadMaxFileSizeKind = 'image'): number {
+  return getUploadMaxFileSizeMb(kind) * 1024 * 1024
 }
 
-export function getEffectiveMaxFileSizeBytes(): number {
-  const configured = getMaxFileSizeBytes()
+export function getEffectiveMaxFileSizeBytes(kind: UploadMaxFileSizeKind = 'image'): number {
+  const configured = getMaxFileSizeBytes(kind)
   const row = getActiveBackendRow()
   if (row?.type === 'telegram') {
     return Math.min(configured, TELEGRAM_MAX_FILE_BYTES)
   }
   return configured
+}
+
+export function getEffectiveUploadMaxFileSizeMb(kind: UploadMaxFileSizeKind): number {
+  return Math.floor(getEffectiveMaxFileSizeBytes(kind) / (1024 * 1024))
 }
 
 export function getAllowedMimeTypesList(): AllowedMimeType[] {
@@ -418,27 +499,48 @@ export function getLoginRateLimitSettings(): {
   }
 }
 
-export function formatMaxFileSizeMessage(): string {
-  return `图片大小不能超过 ${getUploadMaxFileSizeMb()} MB`
+export function formatMaxFileSizeMessage(kind: UploadMaxFileSizeKind = 'image'): string {
+  return `${uploadMaxFileSizeConfig[kind].label}大小不能超过 ${getUploadMaxFileSizeMb(kind)} MB`
 }
 
-export function formatEffectiveMaxFileSizeMessage(): string {
+export function formatEffectiveMaxFileSizeMessage(
+  kind: UploadMaxFileSizeKind = 'image'
+): string {
   const row = getActiveBackendRow()
   if (row?.type === 'telegram') {
     const mb = TELEGRAM_MAX_FILE_BYTES / (1024 * 1024)
-    const siteMb = getUploadMaxFileSizeMb()
+    const siteMb = getUploadMaxFileSizeMb(kind)
     if (siteMb * 1024 * 1024 <= TELEGRAM_MAX_FILE_BYTES) {
-      return formatMaxFileSizeMessage()
+      return formatMaxFileSizeMessage(kind)
     }
-    return `图片大小不能超过 ${mb} MB（Telegram 存储上限）`
+    return `${uploadMaxFileSizeConfig[kind].label}大小不能超过 ${mb} MB（Telegram 存储上限）`
   }
-  return formatMaxFileSizeMessage()
+  return formatMaxFileSizeMessage(kind)
 }
 
 export function getUploadPolicySettingsPayload() {
   return {
-    uploadMaxFileSizeMb: getUploadMaxFileSizeMb(),
-    uploadMaxFileSizeMbSource: getUploadMaxFileSizeMbSource(),
+    uploadImageMaxFileSizeMb: getUploadMaxFileSizeMb('image'),
+    uploadImageMaxFileSizeMbSource: getUploadMaxFileSizeMbSource('image'),
+    uploadImageMaxFileSizeMbEnvFallback: parseUploadMaxFileSizeMbForKind(
+      readEnv('UPLOAD_IMAGE_MAX_FILE_SIZE_MB'),
+      'image'
+    ) ?? parseUploadMaxFileSizeMb(readEnv('UPLOAD_MAX_FILE_SIZE_MB'))
+    ?? DEFAULT_UPLOAD_IMAGE_MAX_FILE_SIZE_MB,
+    uploadVideoMaxFileSizeMb: getUploadMaxFileSizeMb('video'),
+    uploadVideoMaxFileSizeMbSource: getUploadMaxFileSizeMbSource('video'),
+    uploadVideoMaxFileSizeMbEnvFallback: parseUploadMaxFileSizeMbForKind(
+      readEnv('UPLOAD_VIDEO_MAX_FILE_SIZE_MB'),
+      'video'
+    ) ?? DEFAULT_UPLOAD_VIDEO_MAX_FILE_SIZE_MB,
+    uploadFileMaxFileSizeMb: getUploadMaxFileSizeMb('file'),
+    uploadFileMaxFileSizeMbSource: getUploadMaxFileSizeMbSource('file'),
+    uploadFileMaxFileSizeMbEnvFallback: parseUploadMaxFileSizeMbForKind(
+      readEnv('UPLOAD_FILE_MAX_FILE_SIZE_MB'),
+      'file'
+    ) ?? DEFAULT_UPLOAD_FILE_MAX_FILE_SIZE_MB,
+    uploadMaxFileSizeMb: getUploadMaxFileSizeMb('image'),
+    uploadMaxFileSizeMbSource: getUploadMaxFileSizeMbSource('image'),
     uploadMaxFileSizeMbEnvFallback: parseUploadMaxFileSizeMb(readEnv('UPLOAD_MAX_FILE_SIZE_MB'))
       ?? DEFAULT_UPLOAD_MAX_FILE_SIZE_MB,
     allowedMimeTypes: getAllowedMimeTypesList(),
@@ -477,6 +579,9 @@ export function getUploadPolicySettingsPayload() {
 
 export function setUploadPolicySettings(input: {
   uploadMaxFileSizeMb?: number
+  uploadImageMaxFileSizeMb?: number
+  uploadVideoMaxFileSizeMb?: number
+  uploadFileMaxFileSizeMb?: number
   allowedMimeTypes?: readonly string[]
   allowedVideoExtensions?: readonly string[]
   forbiddenFileExtensions?: readonly string[]
@@ -487,8 +592,21 @@ export function setUploadPolicySettings(input: {
   loginRateWindowMinutes?: number
   preserveOriginalUpload?: boolean
 }): void {
-  if (input.uploadMaxFileSizeMb !== undefined) {
-    setSetting(SETTINGS_UPLOAD_MAX_FILE_SIZE_MB, String(input.uploadMaxFileSizeMb))
+  const imageMaxFileSizeMb = input.uploadImageMaxFileSizeMb ?? input.uploadMaxFileSizeMb
+  if (imageMaxFileSizeMb !== undefined) {
+    setSetting(SETTINGS_UPLOAD_IMAGE_MAX_FILE_SIZE_MB, String(imageMaxFileSizeMb))
+  }
+  if (input.uploadVideoMaxFileSizeMb !== undefined) {
+    setSetting(
+      SETTINGS_UPLOAD_VIDEO_MAX_FILE_SIZE_MB,
+      String(input.uploadVideoMaxFileSizeMb)
+    )
+  }
+  if (input.uploadFileMaxFileSizeMb !== undefined) {
+    setSetting(
+      SETTINGS_UPLOAD_FILE_MAX_FILE_SIZE_MB,
+      String(input.uploadFileMaxFileSizeMb)
+    )
   }
   if (input.allowedMimeTypes !== undefined) {
     setSetting(SETTINGS_ALLOWED_MIME_TYPES, serializeAllowedMimeTypes(input.allowedMimeTypes))

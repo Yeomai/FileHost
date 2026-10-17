@@ -8,6 +8,7 @@ import {
   parseLoginRateMax,
   parsePreserveOriginalUpload,
   parseUploadMaxFileSizeMb,
+  parseUploadMaxFileSizeMbForKind,
   parseUploadRateIpMax,
   serializeAllowedMimeTypes,
   serializeAllowedVideoExtensions,
@@ -18,8 +19,17 @@ import {
 describe('upload-policy parsers', () => {
   it('parses upload max file size mb', () => {
     expect(parseUploadMaxFileSizeMb('10')).toBe(10)
-    expect(parseUploadMaxFileSizeMb('0')).toBeNull()
+    expect(parseUploadMaxFileSizeMb('0')).toBe(0)
     expect(parseUploadMaxFileSizeMb('101')).toBeNull()
+  })
+
+  it('parses separate image, video and file size limits', () => {
+    expect(parseUploadMaxFileSizeMbForKind('0', 'image')).toBe(0)
+    expect(parseUploadMaxFileSizeMbForKind('100', 'image')).toBe(100)
+    expect(parseUploadMaxFileSizeMbForKind('2048', 'video')).toBe(2048)
+    expect(parseUploadMaxFileSizeMbForKind('2049', 'video')).toBeNull()
+    expect(parseUploadMaxFileSizeMbForKind('1024', 'file')).toBe(1024)
+    expect(parseUploadMaxFileSizeMbForKind('1025', 'file')).toBeNull()
   })
 
   it('normalizes allowed mime types', () => {

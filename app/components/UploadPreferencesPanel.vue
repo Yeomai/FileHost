@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { UploadMediaKind } from '~/composables/useUploadPreferences'
+import {
+  normalizeUploadTagNames,
+  type UploadMediaKind
+} from '~/composables/useUploadPreferences'
 
 const props = withDefaults(defineProps<{
   /** 每个上传页各自一份偏好 */
@@ -17,20 +20,36 @@ const {
   autoCopyMarkdown,
   copyFormat,
   clientWebpQuality,
-  lastTagIds,
+  uploadTagNames,
   transcodeToHls,
   loadPreferences
 } = useUploadPreferences(props.kind)
-const { items: tagItems, fetchTags } = useTags()
+const uploadTagDraft = ref('')
 
 /** 视频床 / 文件床没有图片压缩相关选项 */
 const isImageKind = computed(() => props.kind === 'image')
 const isVideoKind = computed(() => props.kind === 'video')
-const gridClass = computed(() => {
-  if (isImageKind.value) return 'sm:grid-cols-3 sm:gap-6'
-  if (isVideoKind.value) return 'sm:grid-cols-2 sm:gap-6'
-  return 'mx-auto w-full max-w-md'
+const processingGridClass = computed(() => {
+  if (isImageKind.value || isVideoKind.value) return 'md:col-start-1 md:row-start-1'
+  return ''
 })
+const qualityGridClass = computed(() => {
+  if (isImageKind.value) return 'md:col-start-1 md:row-start-2'
+  return ''
+})
+const convenienceGridClass = computed(() => {
+  if (isImageKind.value) return 'md:col-start-2 md:row-start-1'
+  if (isVideoKind.value) return 'md:col-start-1 md:row-start-2'
+  return ''
+})
+const tagsGridClass = computed(() => {
+  if (isImageKind.value) return 'md:col-start-2 md:row-start-2'
+  if (isVideoKind.value) return 'md:col-start-2 md:row-start-1 md:row-span-2'
+  return ''
+})
+const tagsLayoutClass = computed(() => [
+  tagsGridClass.value
+])
 
 const { t } = useI18n()
 const {
@@ -74,11 +93,39 @@ function onClientQualityInput(event: Event) {
   clientWebpQuality.value = Number.isFinite(value) ? value : 80
 }
 
+function commitUploadTags() {
+  const names = normalizeUploadTagNames(uploadTagDraft.value)
+  if (!names.length) return
+  uploadTagNames.value = normalizeUploadTagNames([
+    ...uploadTagNames.value,
+    ...names
+  ])
+  uploadTagDraft.value = ''
+}
+
+function onUploadTagKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' || event.key === ',' || event.key === '，') {
+    event.preventDefault()
+    commitUploadTags()
+    return
+  }
+  if (
+    event.key === 'Backspace'
+    && !uploadTagDraft.value
+    && uploadTagNames.value.length
+  ) {
+    uploadTagNames.value = uploadTagNames.value.slice(0, -1)
+  }
+}
+
+function removeUploadTag(name: string) {
+  uploadTagNames.value = uploadTagNames.value.filter(item => item !== name)
+}
+
 onMounted(() => {
   loadPreferences()
   void loadUserSettings()
   void loadTranscodeSettings()
-  void fetchTags()
 })
 </script>
 
@@ -113,12 +160,12 @@ onMounted(() => {
 
     <div class="flex flex-1 flex-col justify-start overflow-y-auto p-5 sm:p-6">
       <div
-        class="grid gap-5"
-        :class="gridClass"
+        class="grid gap-5 md:grid-cols-2 md:gap-6"
       >
         <div
           v-if="isImageKind"
-          class="space-y-4"
+          class="space-y-4 rounded-xl border border-default/70 bg-muted/10 p-4"
+          :class="processingGridClass"
         >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.processing') }}
@@ -179,7 +226,8 @@ onMounted(() => {
 
         <div
           v-if="isVideoKind"
-          class="space-y-4"
+          class="space-y-4 rounded-xl border border-default/70 bg-muted/10 p-4"
+          :class="processingGridClass"
         >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.videoProcessing') }}
@@ -217,7 +265,8 @@ onMounted(() => {
 
         <div
           v-if="isImageKind"
-          class="space-y-4"
+          class="space-y-4 rounded-xl border border-default/70 bg-muted/10 p-4"
+          :class="qualityGridClass"
         >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.webpQuality') }}
@@ -239,7 +288,10 @@ onMounted(() => {
           >
         </div>
 
-        <div class="space-y-4">
+        <div
+          class="space-y-4 rounded-xl border border-default/70 bg-muted/10 p-4"
+          :class="convenienceGridClass"
+        >
           <h3 class="text-sm font-semibold">
             {{ t('preferences.convenience') }}
           </h3>
@@ -271,19 +323,57 @@ onMounted(() => {
             />
           </div>
         </div>
-      </div>
 
-      <div class="mt-5 space-y-3 border-t border-default pt-5">
-        <h3 class="text-sm font-semibold">
-          {{ t('preferences.uploadTags') }}
-        </h3>
-        <p class="text-xs leading-relaxed text-muted">
-          {{ t('preferences.uploadTagsHint') }}
-        </p>
-        <TagAssignPanel
-          v-model="lastTagIds"
-          :tags="tagItems"
-        />
+        <div
+          class="space-y-3 rounded-xl border border-default/70 bg-muted/10 p-4"
+          :class="tagsLayoutClass"
+        >
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold">
+              {{ t('preferences.uploadTags') }}
+            </h3>
+            <p class="text-xs leading-relaxed text-muted">
+              {{ t('preferences.uploadTagsHint') }}
+            </p>
+          </div>
+          <UInput
+            v-model="uploadTagDraft"
+            size="md"
+            icon="i-lucide-tags"
+            maxlength="32"
+            :placeholder="t('preferences.uploadTagsPlaceholder')"
+            @keydown="onUploadTagKeydown"
+            @blur="commitUploadTags"
+          />
+          <div
+            v-if="uploadTagNames.length"
+            class="space-y-2 pt-1"
+          >
+            <p class="text-xs font-medium text-muted">
+              {{ t('preferences.uploadTagsPending', { n: uploadTagNames.length }) }}
+            </p>
+            <div class="flex flex-wrap gap-2.5">
+              <span
+                v-for="name in uploadTagNames"
+                :key="name"
+                class="relative inline-flex max-w-full items-center rounded-full border border-primary/35 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+              >
+                <span class="truncate">{{ name }}</span>
+                <button
+                  type="button"
+                  class="absolute -top-1.5 -right-1.5 inline-flex size-4 items-center justify-center rounded-full border border-primary/40 bg-elevated text-primary shadow-sm transition-colors hover:bg-primary hover:text-inverted"
+                  :aria-label="t('preferences.uploadTagsRemove', { name })"
+                  @click="removeUploadTag(name)"
+                >
+                  <UIcon
+                    name="i-lucide-x"
+                    class="size-2.5"
+                  />
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

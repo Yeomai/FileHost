@@ -158,7 +158,7 @@
   "upload": {
     "title": "Drop images here to upload",
     "hint": "Or click to select files, press {ctrl} + {v} to paste",
-    "formats": "JPEG / PNG / WebP / GIF / SVG / ICO, max 10 MB each, up to 10 files per batch",
+    "formats": "JPEG / PNG / WebP / GIF / SVG / ICO, max {size} MB each, up to 10 files per batch",
     "selectFiles": "Select images",
     "settings": "Upload settings",
     "progress": "Upload progress",
@@ -329,7 +329,10 @@
     "autoCopy": "Copy link after upload",
     "autoCopyHint": "Copy to clipboard in the selected format",
     "uploadTags": "Upload tags",
-    "uploadTagsHint": "Tags selected here are applied to images, videos, and files; missing tags are created automatically."
+    "uploadTagsHint": "Press Enter, type a comma, or leave the field to add a tag. Leave empty to upload without tags.",
+    "uploadTagsPlaceholder": "Enter tag",
+    "uploadTagsPending": "Pending tags ({n})",
+    "uploadTagsRemove": "Remove tag {name}"
   },
   "settings": {
     "title": "System settings",
@@ -475,6 +478,12 @@
     "minutesUnit": "min",
     "uploadMaxFileSize": "Max file size",
     "uploadMaxFileSizeHint": "Uploads larger than this are rejected (1–100 MB).",
+    "uploadImageMaxFileSize": "Image size limit",
+    "uploadImageMaxFileSizeHint": "Images larger than this are rejected, up to 100 MB. 0 MB blocks uploads.",
+    "uploadVideoMaxFileSize": "Video size limit",
+    "uploadVideoMaxFileSizeHint": "Videos larger than this are rejected, up to 2048 MB. 0 MB blocks uploads.",
+    "uploadFileMaxFileSize": "File size limit",
+    "uploadFileMaxFileSizeHint": "Regular files larger than this are rejected, up to 1024 MB. 0 MB blocks uploads.",
     "allowedMimeTypes": "Allowed image formats",
     "allowedMimeTypesHint": "Keep at least one format enabled. The server validates file signatures, not just extensions.",
     "allowedVideoExtensions": "Allowed video formats",
@@ -1169,6 +1178,7 @@
     "maxFiles": "Up to {n} files per upload",
     "uploadSuccess": "Uploaded {n} file(s)",
     "uploadFailed": "Upload failed, please try again",
+    "fileTooLarge": "{name}: exceeds the {limit} MB per-file limit",
     "loadFailed": "Failed to load files",
     "copyLink": "Copy link",
     "download": "Download",
@@ -1218,9 +1228,9 @@
       "subtitle": "Manage uploaded files, copy links or download",
       "uploadTitle": "Drop files here to upload",
       "uploadHint": "or click to choose files, up to 10 at a time",
-      "uploadFormats": "Any type allowed (HTML / HTM / SVG blocked), up to 100MB per file",
-      "uploadFormatsBlocked": "{formats} blocked; other file types allowed, up to 100MB per file",
-      "uploadFormatsUnrestricted": "Any file type allowed, up to 100MB per file",
+      "uploadFormats": "Any type allowed (HTML / HTM / SVG blocked), up to {size} MB per file",
+      "uploadFormatsBlocked": "{formats} blocked; other file types allowed, up to {size} MB per file",
+      "uploadFormatsUnrestricted": "Any file type allowed, up to {size} MB per file",
       "empty": "No files yet — upload one to get started"
     },
     "video": {
@@ -1243,8 +1253,8 @@
       "downloadMp4Failed": "Video merge failed. Please try again later.",
       "uploadTitle": "Drop videos here to upload",
       "uploadHint": "or click to choose video files, up to 10 at a time",
-      "uploadFormats": "MP4 / WebM / MOV / MKV and more, up to 100MB per file",
-      "uploadFormatsAllowed": "{formats} supported, up to 100MB per file",
+      "uploadFormats": "MP4 / WebM / MOV / MKV and more, up to {size} MB per file",
+      "uploadFormatsAllowed": "{formats} supported, up to {size} MB per file",
       "empty": "No videos yet — upload one to get started"
     }
   },

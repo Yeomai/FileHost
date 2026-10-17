@@ -51,6 +51,7 @@ import {
   parseLoginRateMax,
   parseLoginRateWindowMinutes,
   parseUploadMaxFileSizeMb,
+  parseUploadMaxFileSizeMbForKind,
   parseUploadRateIpMax,
   parseUploadRateTokenMax,
   parseUploadRateWindowMinutes,
@@ -78,6 +79,9 @@ interface SettingsPatchBody {
   capApiEndpoint?: unknown
   capSecret?: unknown
   uploadMaxFileSizeMb?: unknown
+  uploadImageMaxFileSizeMb?: unknown
+  uploadVideoMaxFileSizeMb?: unknown
+  uploadFileMaxFileSizeMb?: unknown
   allowedMimeTypes?: unknown
   allowedVideoExtensions?: unknown
   forbiddenFileExtensions?: unknown
@@ -360,9 +364,42 @@ export default defineEventHandler(async (event) => {
   if (body.uploadMaxFileSizeMb !== undefined) {
     const mb = parseUploadMaxFileSizeMb(String(body.uploadMaxFileSizeMb))
     if (mb === null) {
-      createApiError(event, 'INVALID_REQUEST', '单文件大小需为 1–100 MB 的整数', 400)
+      createApiError(event, 'INVALID_REQUEST', '图片大小需为 0–100 MB 的整数', 400)
     }
     setUploadPolicySettings({ uploadMaxFileSizeMb: mb })
+  }
+
+  if (body.uploadImageMaxFileSizeMb !== undefined) {
+    const mb = parseUploadMaxFileSizeMbForKind(
+      String(body.uploadImageMaxFileSizeMb),
+      'image'
+    )
+    if (mb === null) {
+      createApiError(event, 'INVALID_REQUEST', '图片大小需为 0–100 MB 的整数', 400)
+    }
+    setUploadPolicySettings({ uploadImageMaxFileSizeMb: mb })
+  }
+
+  if (body.uploadVideoMaxFileSizeMb !== undefined) {
+    const mb = parseUploadMaxFileSizeMbForKind(
+      String(body.uploadVideoMaxFileSizeMb),
+      'video'
+    )
+    if (mb === null) {
+      createApiError(event, 'INVALID_REQUEST', '视频大小需为 0–2048 MB 的整数', 400)
+    }
+    setUploadPolicySettings({ uploadVideoMaxFileSizeMb: mb })
+  }
+
+  if (body.uploadFileMaxFileSizeMb !== undefined) {
+    const mb = parseUploadMaxFileSizeMbForKind(
+      String(body.uploadFileMaxFileSizeMb),
+      'file'
+    )
+    if (mb === null) {
+      createApiError(event, 'INVALID_REQUEST', '文件大小需为 0–1024 MB 的整数', 400)
+    }
+    setUploadPolicySettings({ uploadFileMaxFileSizeMb: mb })
   }
 
   if (body.allowedMimeTypes !== undefined) {

@@ -43,7 +43,7 @@ function onBack() {
 <template>
   <div
     class="upload-card-flip"
-    :class="{ 'is-flipped': flipped }"
+    :class="[`upload-card-flip--${kind}`, { 'is-flipped': flipped }]"
   >
     <div class="upload-card-flip-inner">
       <div class="upload-card-face upload-card-face--front">

@@ -13,6 +13,7 @@ export interface SiteSyncMediaTransfer {
   size: number
   uploadedAt: string
   mediaType: MediaType
+  uploadSource?: 'web' | 'api'
   thumbKey: string | null
   hlsKey: string | null
   transcodeStatus: TranscodeStatus

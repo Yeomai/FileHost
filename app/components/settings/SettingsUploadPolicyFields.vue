@@ -5,7 +5,9 @@ type VideoExtension = 'mp4' | 'm4v' | 'webm' | 'mov' | 'mkv' | 'avi' | 'flv' | '
 
 const props = defineProps<{
   part: 'upload-preference' | 'image-processing' | 'login-rate'
-  uploadMaxFileSizeMbSource?: PolicySource
+  uploadImageMaxFileSizeMbSource?: PolicySource
+  uploadVideoMaxFileSizeMbSource?: PolicySource
+  uploadFileMaxFileSizeMbSource?: PolicySource
   allowedMimeTypesSource?: PolicySource
   allowedVideoExtensionsSource?: PolicySource
   forbiddenFileExtensionsSource?: PolicySource
@@ -20,7 +22,9 @@ const props = defineProps<{
   forbiddenFileExtensionOptions?: ReadonlyArray<{ extension: string, label: string }>
 }>()
 
-const uploadMaxFileSizeMbDraft = defineModel<number>('uploadMaxFileSizeMb')
+const uploadImageMaxFileSizeMbDraft = defineModel<number>('uploadImageMaxFileSizeMb')
+const uploadVideoMaxFileSizeMbDraft = defineModel<number>('uploadVideoMaxFileSizeMb')
+const uploadFileMaxFileSizeMbDraft = defineModel<number>('uploadFileMaxFileSizeMb')
 const allowedMimeTypesDraft = defineModel<MimeType[]>('allowedMimeTypes')
 const allowedVideoExtensionsDraft = defineModel<VideoExtension[]>('allowedVideoExtensions')
 const forbiddenFileExtensionsDraft = defineModel<string[]>('forbiddenFileExtensions')
@@ -125,67 +129,109 @@ function addCustomForbiddenExtension() {
   customForbiddenExtension.value = ''
 }
 
-function clampUploadMaxFileSizeMb(value: unknown): number {
-  const num = Number(value)
-  if (!Number.isFinite(num)) return uploadMaxFileSizeMbDraft.value ?? 10
-  return Math.min(100, Math.max(1, Math.round(num)))
+type UploadSizeKind = 'image' | 'video' | 'file'
+
+const uploadSizeFields = computed(() => [
+  {
+    kind: 'image' as const,
+    title: t('settings.uploadImageMaxFileSize'),
+    hint: t('settings.uploadImageMaxFileSizeHint'),
+    source: props.uploadImageMaxFileSizeMbSource,
+    value: uploadImageMaxFileSizeMbDraft.value ?? 10,
+    max: 100
+  },
+  {
+    kind: 'video' as const,
+    title: t('settings.uploadVideoMaxFileSize'),
+    hint: t('settings.uploadVideoMaxFileSizeHint'),
+    source: props.uploadVideoMaxFileSizeMbSource,
+    value: uploadVideoMaxFileSizeMbDraft.value ?? 500,
+    max: 2048
+  },
+  {
+    kind: 'file' as const,
+    title: t('settings.uploadFileMaxFileSize'),
+    hint: t('settings.uploadFileMaxFileSizeHint'),
+    source: props.uploadFileMaxFileSizeMbSource,
+    value: uploadFileMaxFileSizeMbDraft.value ?? 100,
+    max: 1024
+  }
+])
+
+function uploadSizeModel(kind: UploadSizeKind) {
+  if (kind === 'video') return uploadVideoMaxFileSizeMbDraft
+  if (kind === 'file') return uploadFileMaxFileSizeMbDraft
+  return uploadImageMaxFileSizeMbDraft
 }
 
-function onUploadMaxFileSizeInput(event: Event) {
-  uploadMaxFileSizeMbDraft.value = clampUploadMaxFileSizeMb(
+function clampUploadMaxFileSizeMb(kind: UploadSizeKind, value: unknown): number {
+  const num = Number(value)
+  const model = uploadSizeModel(kind)
+  const max = kind === 'video' ? 2048 : kind === 'file' ? 1024 : 100
+  if (!Number.isFinite(num)) return model.value ?? (kind === 'video' ? 500 : kind === 'file' ? 100 : 10)
+  return Math.min(max, Math.max(0, Math.round(num)))
+}
+
+function onUploadMaxFileSizeInput(kind: UploadSizeKind, event: Event) {
+  uploadSizeModel(kind).value = clampUploadMaxFileSizeMb(kind,
     (event.target as HTMLInputElement).value
   )
 }
 
-function onUploadMaxFileSizeNumberInput(value: string | number) {
-  uploadMaxFileSizeMbDraft.value = clampUploadMaxFileSizeMb(value)
+function onUploadMaxFileSizeNumberInput(kind: UploadSizeKind, value: string | number) {
+  uploadSizeModel(kind).value = clampUploadMaxFileSizeMb(kind, value)
 }
 </script>
 
 <template>
   <template v-if="part === 'upload-preference'">
-    <div class="py-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <p class="text-sm font-medium text-highlighted">
-          {{ t('settings.uploadMaxFileSize') }}
-        </p>
-        <UBadge
-          v-if="uploadMaxFileSizeMbSource"
-          :color="sourceBadge(uploadMaxFileSizeMbSource).color"
-          variant="subtle"
-          size="xs"
-        >
-          {{ sourceBadge(uploadMaxFileSizeMbSource).label }}
-        </UBadge>
-      </div>
-      <p class="mt-1 text-xs leading-relaxed text-muted">
-        {{ t('settings.uploadMaxFileSizeHint') }}
-      </p>
+    <div class="space-y-5 py-4">
       <div
-        class="mt-3 flex items-center gap-3"
-        :class="uploadMaxFileSizeMbSource === 'env' ? 'pointer-events-none opacity-60' : ''"
+        v-for="field in uploadSizeFields"
+        :key="field.kind"
       >
-        <input
-          type="range"
-          min="1"
-          max="100"
-          :value="uploadMaxFileSizeMbDraft"
-          class="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-          :disabled="uploadMaxFileSizeMbSource === 'env'"
-          @input="onUploadMaxFileSizeInput"
-        >
-        <div class="flex shrink-0 items-center gap-1.5">
-          <UInput
-            :model-value="uploadMaxFileSizeMbDraft"
-            type="number"
-            :min="1"
-            :max="100"
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="text-sm font-medium text-highlighted">
+            {{ field.title }}
+          </p>
+          <UBadge
+            v-if="field.source"
+            :color="sourceBadge(field.source).color"
+            variant="subtle"
             size="xs"
-            class="w-14 tabular-nums"
-            :disabled="uploadMaxFileSizeMbSource === 'env'"
-            @update:model-value="onUploadMaxFileSizeNumberInput"
-          />
-          <span class="text-xs text-muted">MB</span>
+          >
+            {{ sourceBadge(field.source).label }}
+          </UBadge>
+        </div>
+        <p class="mt-1 text-xs leading-relaxed text-muted">
+          {{ field.hint }}
+        </p>
+        <div
+          class="mt-3 flex items-center gap-3"
+          :class="field.source === 'env' ? 'pointer-events-none opacity-60' : ''"
+        >
+          <input
+            type="range"
+            min="0"
+            :max="field.max"
+            :value="field.value"
+            class="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+            :disabled="field.source === 'env'"
+            @input="onUploadMaxFileSizeInput(field.kind, $event)"
+          >
+          <div class="flex shrink-0 items-center gap-1.5">
+            <UInput
+              :model-value="field.value"
+              type="number"
+              :min="0"
+              :max="field.max"
+              size="xs"
+              class="w-16 tabular-nums"
+              :disabled="field.source === 'env'"
+              @update:model-value="onUploadMaxFileSizeNumberInput(field.kind, $event)"
+            />
+            <span class="text-xs text-muted">MB</span>
+          </div>
         </div>
       </div>
     </div>

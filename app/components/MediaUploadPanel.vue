@@ -32,24 +32,28 @@ onMounted(() => {
 const text = computed(() => {
   const allowedVideos = uploadPolicy.value?.allowedVideoExtensions ?? []
   const forbiddenFiles = uploadPolicy.value?.forbiddenFileExtensions ?? []
+  const videoMaxFileSizeMb = uploadPolicy.value?.videoMaxFileSizeMb ?? 500
+  const fileMaxFileSizeMb = uploadPolicy.value?.fileMaxFileSizeMb ?? 100
   return props.kind === 'video'
     ? {
         uploadTitle: t('library.video.uploadTitle'),
         uploadHint: t('library.video.uploadHint'),
         uploadFormats: allowedVideos.length
           ? t('library.video.uploadFormatsAllowed', {
-              formats: allowedVideos.map(item => item.toUpperCase()).join(' / ')
+              formats: allowedVideos.map(item => item.toUpperCase()).join(' / '),
+              size: videoMaxFileSizeMb
             })
-          : t('library.video.uploadFormats')
+          : t('library.video.uploadFormats', { size: videoMaxFileSizeMb })
       }
     : {
         uploadTitle: t('library.file.uploadTitle'),
         uploadHint: t('library.file.uploadHint'),
         uploadFormats: forbiddenFiles.length
           ? t('library.file.uploadFormatsBlocked', {
-              formats: forbiddenFiles.map(item => item.toUpperCase()).join(' / ')
+              formats: forbiddenFiles.map(item => item.toUpperCase()).join(' / '),
+              size: fileMaxFileSizeMb
             })
-          : t('library.file.uploadFormatsUnrestricted')
+          : t('library.file.uploadFormatsUnrestricted', { size: fileMaxFileSizeMb })
       }
 })
 

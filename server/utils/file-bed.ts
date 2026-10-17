@@ -1,10 +1,6 @@
 import type { H3Event } from 'h3'
 import type { UploadErrorItem } from '~/types/image'
 import type { FileItem } from '~/types/file'
-import {
-  MAX_FILE_BED_FILE_SIZE,
-  MAX_VIDEO_FILE_SIZE
-} from './constants'
 import { contentTypeFromKey } from './content-type'
 import {
   extensionFromFilename,
@@ -21,7 +17,9 @@ import { putImage } from './storage'
 import { generateVideoThumbnail } from './transcode'
 import { updateImageThumb } from './image-index'
 import {
+  formatEffectiveMaxFileSizeMessage,
   getAllowedVideoExtensions,
+  getEffectiveMaxFileSizeBytes,
   isForbiddenFileExtension,
   isVideoExtensionAllowed
 } from './upload-policy'
@@ -126,13 +124,13 @@ export async function processSingleFileUpload(
     }
   }
 
-  if (bytes.byteLength > MAX_FILE_BED_FILE_SIZE) {
+  if (bytes.byteLength > getEffectiveMaxFileSizeBytes('file')) {
     return {
       error: {
         name: originalName,
         error: {
           code: 'FILE_TOO_LARGE',
-          message: `单个文件不能超过 ${Math.round(MAX_FILE_BED_FILE_SIZE / 1024 / 1024)}MB`
+          message: formatEffectiveMaxFileSizeMessage('file')
         }
       }
     }
@@ -271,13 +269,13 @@ export async function processSingleVideoUpload(
     }
   }
 
-  if (bytes.byteLength > MAX_VIDEO_FILE_SIZE) {
+  if (bytes.byteLength > getEffectiveMaxFileSizeBytes('video')) {
     return {
       error: {
         name: originalName,
         error: {
           code: 'FILE_TOO_LARGE',
-          message: `单个视频不能超过 ${Math.round(MAX_VIDEO_FILE_SIZE / 1024 / 1024)}MB`
+          message: formatEffectiveMaxFileSizeMessage('video')
         }
       }
     }

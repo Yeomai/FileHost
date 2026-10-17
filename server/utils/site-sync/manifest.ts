@@ -1,4 +1,5 @@
 import type { ImageIndexRow } from '../image-index'
+import { getUploadSourcesForKeys } from '../db'
 import { getTagsForImageKeys } from '../tags'
 import type {
   SiteSyncMediaTransfer,
@@ -10,6 +11,8 @@ export function toSiteSyncMediaTransfer(
   ownerUsername: string | null,
   tags: SiteSyncTag[]
 ): SiteSyncMediaTransfer {
+  const source = getUploadSourcesForKeys([row.key]).get(row.key)
+  const uploadSource = source === 'web' || source === 'api' ? source : undefined
   return {
     key: row.key,
     ownerUsername,
@@ -18,6 +21,7 @@ export function toSiteSyncMediaTransfer(
     size: row.size,
     uploadedAt: row.uploaded_at,
     mediaType: row.media_type,
+    ...(uploadSource ? { uploadSource } : {}),
     thumbKey: row.thumb_key,
     hlsKey: row.hls_key,
     transcodeStatus: row.transcode_status as SiteSyncMediaTransfer['transcodeStatus'],

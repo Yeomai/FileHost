@@ -17,7 +17,7 @@ const emit = defineEmits<{
   'created': [tag: ImageTag]
 }>()
 
-const COMMON_LIMIT = 12
+const COMMON_LIMIT = 10
 const { t } = useI18n()
 const toast = useToast()
 const { createTag } = useTags()

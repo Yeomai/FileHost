@@ -3,6 +3,7 @@ import type { ImageItem, ImageTag } from '~/types/image'
 import { buildImageBbcode } from '~/utils/image-display'
 
 const { uploading, progressItems, uploadFiles } = useImageUpload()
+const { policy: uploadPolicy, load: loadUploadPolicy } = useUploadPolicy()
 
 const {
   autoCopyMarkdown,
@@ -16,6 +17,9 @@ const { recordRecent } = useRecentTags()
 const { isChecking, isAuthenticated, checkSession, handleAuthError, fetchStatus } = useAuth()
 const toast = useToast()
 const { t } = useI18n()
+const imageFormats = computed(() =>
+  t('upload.formats', { size: uploadPolicy.value?.imageMaxFileSizeMb ?? 10 })
+)
 const sessionItems = ref<ImageItem[]>([])
 const deletingKeys = ref<Set<string>>(new Set())
 const emptySelection = ref(new Set<string>())
@@ -39,6 +43,7 @@ const showProgress = computed(
 async function loadPage() {
   try {
     loadPreferences()
+    await loadUploadPolicy().catch(() => {})
   } catch (error: unknown) {
     handleAuthError(error)
   }
@@ -227,6 +232,7 @@ async function confirmBatchTags(tagIds: number[]) {
     <AppShell v-else>
       <UploadFlipCard
         :disabled="uploading"
+        :formats="imageFormats"
         @upload="handleUpload"
       />
 

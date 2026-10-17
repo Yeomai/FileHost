@@ -659,20 +659,11 @@ defineExpose({ refresh })
                   {{ uploadedLabel(item) }}
                 </td>
                 <td class="hidden px-3 py-2 md:table-cell">
-                  <div
-                    v-if="item.tags?.length"
-                    class="flex flex-wrap gap-1"
-                  >
-                    <TagBadge
-                      v-for="tag in item.tags"
-                      :key="tag.id"
-                      :tag="tag"
-                    />
-                  </div>
-                  <span
-                    v-else
-                    class="text-muted"
-                  >{{ t('tags.unlabeled') }}</span>
+                  <TagBadgeList
+                    :tags="item.tags"
+                    compact
+                    :empty-label="t('tags.unlabeled')"
+                  />
                 </td>
                 <td class="px-3 py-2">
                   <div class="flex items-center justify-end gap-1">

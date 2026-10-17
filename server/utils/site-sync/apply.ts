@@ -1,4 +1,8 @@
-import { findUserByUsername } from '../db'
+import {
+  findUserByUsername,
+  getUploadSourcesForKeys,
+  insertActivityLog
+} from '../db'
 import {
   getImageIndexRow,
   insertImageIndex,
@@ -51,6 +55,24 @@ export async function applySiteSyncMedia(
     uploadedAt: media.uploadedAt,
     mediaType: media.mediaType
   })
+
+  if (
+    media.uploadSource
+    && getUploadSourcesForKeys([media.key]).get(media.key) !== media.uploadSource
+  ) {
+    insertActivityLog({
+      action: 'upload',
+      key: media.key,
+      originalName: media.originalName,
+      size: media.size,
+      contentType: media.contentType,
+      source: media.uploadSource,
+      userId: owner?.id ?? null,
+      backendId: backend.id,
+      status: 'success',
+      createdAt: media.uploadedAt
+    })
+  }
 
   if (media.thumbKey) updateImageThumb(media.key, media.thumbKey)
   if (media.mediaType === 'video') {

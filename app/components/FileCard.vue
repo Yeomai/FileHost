@@ -74,16 +74,7 @@ function fileIcon(item: FileItem): string {
       <p class="truncate text-xs text-muted">
         {{ uploadedLabel }} · {{ formatSize(item.size) }}
       </p>
-      <div
-        v-if="item.tags?.length"
-        class="flex flex-wrap gap-1"
-      >
-        <TagBadge
-          v-for="tag in item.tags"
-          :key="tag.id"
-          :tag="tag"
-        />
-      </div>
+      <TagBadgeList :tags="item.tags" />
     </div>
 
     <div class="flex items-center justify-around border-t border-default px-2 py-2">

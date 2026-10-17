@@ -2,6 +2,9 @@ interface UploadPolicy {
   allowedMimeTypes: string[]
   allowedVideoExtensions: string[]
   forbiddenFileExtensions: string[]
+  imageMaxFileSizeMb: number
+  videoMaxFileSizeMb: number
+  fileMaxFileSizeMb: number
 }
 
 const policy = ref<UploadPolicy | null>(null)
@@ -21,7 +24,10 @@ export function useUploadPolicy() {
         policy.value = {
           allowedMimeTypes: [...data.allowedMimeTypes],
           allowedVideoExtensions: [...data.allowedVideoExtensions],
-          forbiddenFileExtensions: [...data.forbiddenFileExtensions]
+          forbiddenFileExtensions: [...data.forbiddenFileExtensions],
+          imageMaxFileSizeMb: data.imageMaxFileSizeMb,
+          videoMaxFileSizeMb: data.videoMaxFileSizeMb,
+          fileMaxFileSizeMb: data.fileMaxFileSizeMb
         }
         return policy.value
       })

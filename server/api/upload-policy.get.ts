@@ -1,6 +1,7 @@
 import {
   getAllowedMimeTypesList,
   getAllowedVideoExtensions,
+  getEffectiveUploadMaxFileSizeMb,
   getForbiddenFileExtensions
 } from '../utils/upload-policy'
 
@@ -9,6 +10,9 @@ export default defineEventHandler((event) => {
   return {
     allowedMimeTypes: getAllowedMimeTypesList(),
     allowedVideoExtensions: getAllowedVideoExtensions(),
-    forbiddenFileExtensions: getForbiddenFileExtensions()
+    forbiddenFileExtensions: getForbiddenFileExtensions(),
+    imageMaxFileSizeMb: getEffectiveUploadMaxFileSizeMb('image'),
+    videoMaxFileSizeMb: getEffectiveUploadMaxFileSizeMb('video'),
+    fileMaxFileSizeMb: getEffectiveUploadMaxFileSizeMb('file')
   }
 })

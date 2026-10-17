@@ -7,12 +7,28 @@
 
 .upload-card-flip-inner {
   position: relative;
-  transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+    min-height 0.35s ease;
   transform-style: preserve-3d;
 }
 
 .upload-card-flip.is-flipped .upload-card-flip-inner {
+  min-height: min(40rem, calc(100vh - 11rem));
   transform: rotateY(180deg);
+}
+
+.upload-card-flip--file.is-flipped .upload-card-flip-inner {
+  min-height: min(27rem, calc(100vh - 11rem));
+}
+
+.upload-card-flip.is-flipped .upload-card-face--front {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.upload-card-flip.is-flipped .upload-settings-btn {
+  display: none;
 }
 
 .upload-card-face {
@@ -20,9 +36,15 @@
   -webkit-backface-visibility: hidden;
 }
 
+.upload-card-face--front {
+  position: relative;
+  z-index: 1;
+}
+
 .upload-card-face--back {
   position: absolute;
   inset: 0;
+  z-index: 2;
   transform: rotateY(180deg);
 }
 
@@ -33,6 +55,7 @@
 
   .upload-card-flip.is-flipped .upload-card-flip-inner {
     transform: none;
+    min-height: 0;
   }
 
   .upload-card-flip .upload-card-face--back {
