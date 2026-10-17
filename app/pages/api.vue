@@ -8,6 +8,8 @@ interface UserTokenResponse {
     refererConfigured: boolean
     siteBaseUrl: string
     imageBaseUrl: string
+    videoBaseUrl: string
+    fileBaseUrl: string
     appVersion: string
   }
 }

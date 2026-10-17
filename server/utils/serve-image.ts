@@ -7,10 +7,15 @@ import {
 import {
   getAllowedRefererHostsRaw,
   getFileBedAccessMode,
+  getFileBaseUrlConfigured,
   getImageBaseUrlConfigured,
+  getVideoBaseUrlConfigured,
   getSiteBaseUrlConfigured,
   hostnameFromBaseUrl,
-  isRefererConfigured
+  isFileDomainSeparated,
+  isImageDomainSeparated,
+  isRefererConfigured,
+  isVideoDomainSeparated
 } from './env'
 import { isFileAccessAuthorized } from './access'
 import { buildAttachmentDisposition } from './file-bed'
@@ -51,11 +56,15 @@ function getAllowedHosts(event: H3Event): Set<string> {
   })
   hosts.add(requestUrl.hostname.toLowerCase())
 
-  // 双域名分离时，管理域页面会引用图片域直链，需互相放行 Referer
+  // 域名分离时，后台页面会引用各资源域直链，需互相放行 Referer
   const siteHost = hostnameFromBaseUrl(getSiteBaseUrlConfigured(event))
   const imageHost = hostnameFromBaseUrl(getImageBaseUrlConfigured(event))
+  const videoHost = hostnameFromBaseUrl(getVideoBaseUrlConfigured(event))
+  const fileHost = hostnameFromBaseUrl(getFileBaseUrlConfigured(event))
   if (siteHost) hosts.add(siteHost)
-  if (imageHost) hosts.add(imageHost)
+  if (imageHost && isImageDomainSeparated(event)) hosts.add(imageHost)
+  if (videoHost && isVideoDomainSeparated(event)) hosts.add(videoHost)
+  if (fileHost && isFileDomainSeparated(event)) hosts.add(fileHost)
 
   return hosts
 }

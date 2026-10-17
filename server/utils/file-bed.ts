@@ -2,7 +2,6 @@ import type { H3Event } from 'h3'
 import type { UploadErrorItem } from '~/types/image'
 import type { FileItem } from '~/types/file'
 import {
-  FORBIDDEN_FILE_EXTENSIONS,
   MAX_FILE_BED_FILE_SIZE,
   MAX_VIDEO_FILE_SIZE
 } from './constants'
@@ -10,8 +9,7 @@ import { contentTypeFromKey } from './content-type'
 import {
   extensionFromFilename,
   generateFileKey,
-  generateVideoKey,
-  isVideoExtension
+  generateVideoKey
 } from './image-key'
 import { getStorageLayout } from './env'
 import { resolveImageUrl } from './image-response'
@@ -22,12 +20,13 @@ import { logException, logInfo } from './logger'
 import { putImage } from './storage'
 import { generateVideoThumbnail } from './transcode'
 import { updateImageThumb } from './image-index'
+import {
+  getAllowedVideoExtensions,
+  isForbiddenFileExtension,
+  isVideoExtensionAllowed
+} from './upload-policy'
 
-/** 文件床禁止上传的扩展名（html / htm / svg） */
-export function isForbiddenFileExtension(extension: string): boolean {
-  if (!extension) return false
-  return (FORBIDDEN_FILE_EXTENSIONS as readonly string[]).includes(extension.toLowerCase())
-}
+export { isForbiddenFileExtension }
 
 /** 下载文件名清洗：保留中文等字符，去掉路径与控制字符 */
 export function sanitizeDownloadName(name: string): string {
@@ -141,7 +140,7 @@ export async function processSingleFileUpload(
         name: originalName,
         error: {
           code: 'UNSUPPORTED_FILE_TYPE',
-          message: '不允许上传 html / htm / svg 文件'
+          message: `不允许上传 ${extension.toUpperCase()} 文件`
         }
       }
     }
@@ -271,13 +270,13 @@ export async function processSingleVideoUpload(
   }
 
   const extension = extensionFromFilename(originalName)
-  if (!isVideoExtension(extension)) {
+  if (!isVideoExtensionAllowed(extension)) {
     return {
       error: {
         name: originalName,
         error: {
           code: 'UNSUPPORTED_FILE_TYPE',
-          message: '只支持常见视频格式（MP4 / WebM / MOV / MKV 等）'
+          message: `只支持 ${getAllowedVideoExtensions().map(item => item.toUpperCase()).join(' / ')} 视频格式`
         }
       }
     }

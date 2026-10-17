@@ -1,5 +1,8 @@
 import {
   ALLOWED_MIME_TYPES,
+  FORBIDDEN_FILE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  type VideoExtension,
   type AllowedMimeType
 } from './constants'
 import { getSetting, setSetting } from './db'
@@ -8,6 +11,8 @@ import { TELEGRAM_MAX_FILE_BYTES } from './storage/telegram'
 
 export const SETTINGS_UPLOAD_MAX_FILE_SIZE_MB = 'upload_max_file_size_mb'
 export const SETTINGS_ALLOWED_MIME_TYPES = 'allowed_mime_types'
+export const SETTINGS_ALLOWED_VIDEO_EXTENSIONS = 'allowed_video_extensions'
+export const SETTINGS_FORBIDDEN_FILE_EXTENSIONS = 'forbidden_file_extensions'
 export const SETTINGS_UPLOAD_RATE_IP_MAX = 'upload_rate_ip_max'
 export const SETTINGS_UPLOAD_RATE_TOKEN_MAX = 'upload_rate_token_max'
 export const SETTINGS_UPLOAD_RATE_WINDOW_MINUTES = 'upload_rate_window_minutes'
@@ -40,6 +45,37 @@ export const ALL_MIME_TYPE_OPTIONS = [
   { mime: 'image/svg+xml', label: 'SVG' },
   { mime: 'image/x-icon', label: 'ICO' }
 ] as const satisfies ReadonlyArray<{ mime: AllowedMimeType, label: string }>
+
+export const ALL_VIDEO_EXTENSION_OPTIONS = VIDEO_EXTENSIONS.map(extension => ({
+  extension,
+  label: extension.toUpperCase()
+}))
+
+export const FORBIDDEN_FILE_EXTENSION_OPTIONS = [
+  'html',
+  'htm',
+  'xhtml',
+  'svg',
+  'xml',
+  'js',
+  'mjs',
+  'cjs',
+  'php',
+  'phtml',
+  'sh',
+  'bash',
+  'zsh',
+  'bat',
+  'cmd',
+  'ps1',
+  'exe',
+  'dll',
+  'msi',
+  'scr'
+].map(extension => ({
+  extension,
+  label: extension.toUpperCase()
+}))
 
 export type PolicySource = 'env' | 'db' | 'default'
 
@@ -119,9 +155,76 @@ export function serializeAllowedMimeTypes(mimes: readonly string[]): string {
     .join(',')
 }
 
+export function normalizeAllowedVideoExtensions(raw: string): VideoExtension[] {
+  const allowedSet = new Set<string>(VIDEO_EXTENSIONS)
+  const seen = new Set<string>()
+  const result: VideoExtension[] = []
+  for (const part of raw.split(',')) {
+    const extension = part.trim().toLowerCase().replace(/^\.+/, '')
+    if (!extension || seen.has(extension) || !allowedSet.has(extension)) continue
+    seen.add(extension)
+    result.push(extension as VideoExtension)
+  }
+  return result
+}
+
+export function serializeAllowedVideoExtensions(extensions: readonly string[]): string {
+  const normalized = new Set(normalizeAllowedVideoExtensions(extensions.join(',')))
+  return VIDEO_EXTENSIONS
+    .filter(extension => normalized.has(extension))
+    .join(',')
+}
+
+export function normalizeForbiddenFileExtensions(raw: string): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const part of raw.split(',')) {
+    const extension = part
+      .trim()
+      .toLowerCase()
+      .replace(/^\.+/, '')
+    if (!extension || seen.has(extension)) continue
+    if (!/^[a-z0-9][a-z0-9_-]{0,15}$/.test(extension)) continue
+    seen.add(extension)
+    result.push(extension)
+  }
+  return result
+}
+
+export function serializeForbiddenFileExtensions(extensions: readonly string[]): string {
+  const configuredOrder = new Map(
+    FORBIDDEN_FILE_EXTENSION_OPTIONS.map((option, index) => [option.extension, index])
+  )
+  return normalizeForbiddenFileExtensions(extensions.join(','))
+    .sort((left, right) => {
+      const leftOrder = configuredOrder.get(left)
+      const rightOrder = configuredOrder.get(right)
+      if (leftOrder !== undefined || rightOrder !== undefined) {
+        return (leftOrder ?? Number.MAX_SAFE_INTEGER)
+          - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+      }
+      return left.localeCompare(right)
+    })
+    .join(',')
+}
+
 function getUploadMaxFileSizeMbSource(): PolicySource {
   if (getSetting(SETTINGS_UPLOAD_MAX_FILE_SIZE_MB) !== null) return 'db'
   if (parseUploadMaxFileSizeMb(readEnv('UPLOAD_MAX_FILE_SIZE_MB')) !== null) return 'env'
+  return 'default'
+}
+
+function getAllowedVideoExtensionsSource(): PolicySource {
+  if (getSetting(SETTINGS_ALLOWED_VIDEO_EXTENSIONS) !== null) return 'db'
+  if (normalizeAllowedVideoExtensions(readEnv('ALLOWED_VIDEO_EXTENSIONS')).length > 0) {
+    return 'env'
+  }
+  return 'default'
+}
+
+function getForbiddenFileExtensionsSource(): PolicySource {
+  if (getSetting(SETTINGS_FORBIDDEN_FILE_EXTENSIONS) !== null) return 'db'
+  if (readEnv('FORBIDDEN_FILE_EXTENSIONS')) return 'env'
   return 'default'
 }
 
@@ -200,6 +303,35 @@ export function getAllowedMimeTypesList(): AllowedMimeType[] {
   const fromEnv = normalizeAllowedMimeTypes(readEnv('ALLOWED_MIME_TYPES'))
   if (fromEnv.length > 0) return fromEnv
   return [...ALLOWED_MIME_TYPES]
+}
+
+export function getAllowedVideoExtensions(): VideoExtension[] {
+  const dbRaw = getSetting(SETTINGS_ALLOWED_VIDEO_EXTENSIONS)
+  if (dbRaw !== null) {
+    const parsed = normalizeAllowedVideoExtensions(dbRaw)
+    if (parsed.length > 0) return parsed
+  }
+  const fromEnv = normalizeAllowedVideoExtensions(readEnv('ALLOWED_VIDEO_EXTENSIONS'))
+  if (fromEnv.length > 0) return fromEnv
+  return [...VIDEO_EXTENSIONS]
+}
+
+export function getForbiddenFileExtensions(): string[] {
+  const dbRaw = getSetting(SETTINGS_FORBIDDEN_FILE_EXTENSIONS)
+  if (dbRaw !== null) return normalizeForbiddenFileExtensions(dbRaw)
+  const envRaw = readEnv('FORBIDDEN_FILE_EXTENSIONS')
+  if (envRaw) return normalizeForbiddenFileExtensions(envRaw)
+  return [...FORBIDDEN_FILE_EXTENSIONS]
+}
+
+export function isVideoExtensionAllowed(extension: string): boolean {
+  const normalized = extension.trim().toLowerCase().replace(/^\.+/, '')
+  return getAllowedVideoExtensions().includes(normalized as VideoExtension)
+}
+
+export function isForbiddenFileExtension(extension: string): boolean {
+  const normalized = extension.trim().toLowerCase().replace(/^\.+/, '')
+  return Boolean(normalized) && getForbiddenFileExtensions().includes(normalized)
 }
 
 export function isMimeTypeAllowed(mime: string): mime is AllowedMimeType {
@@ -312,6 +444,16 @@ export function getUploadPolicySettingsPayload() {
     allowedMimeTypes: getAllowedMimeTypesList(),
     allowedMimeTypesSource: getAllowedMimeTypesSource(),
     allowedMimeTypesEnvFallback: normalizeAllowedMimeTypes(readEnv('ALLOWED_MIME_TYPES')),
+    allowedVideoExtensions: getAllowedVideoExtensions(),
+    allowedVideoExtensionsSource: getAllowedVideoExtensionsSource(),
+    allowedVideoExtensionsEnvFallback: normalizeAllowedVideoExtensions(
+      readEnv('ALLOWED_VIDEO_EXTENSIONS')
+    ),
+    forbiddenFileExtensions: getForbiddenFileExtensions(),
+    forbiddenFileExtensionsSource: getForbiddenFileExtensionsSource(),
+    forbiddenFileExtensionsEnvFallback: normalizeForbiddenFileExtensions(
+      readEnv('FORBIDDEN_FILE_EXTENSIONS')
+    ),
     uploadRateIpMax: getUploadRateLimitSettings().ipMax,
     uploadRateIpMaxSource: getUploadRateIpMaxSource(),
     uploadRateTokenMax: getUploadRateLimitSettings().tokenMax,
@@ -327,13 +469,17 @@ export function getUploadPolicySettingsPayload() {
     mimeTypeOptions: ALL_MIME_TYPE_OPTIONS.map(option => ({
       mime: option.mime,
       label: option.label
-    }))
+    })),
+    videoExtensionOptions: ALL_VIDEO_EXTENSION_OPTIONS,
+    forbiddenFileExtensionOptions: FORBIDDEN_FILE_EXTENSION_OPTIONS
   }
 }
 
 export function setUploadPolicySettings(input: {
   uploadMaxFileSizeMb?: number
   allowedMimeTypes?: readonly string[]
+  allowedVideoExtensions?: readonly string[]
+  forbiddenFileExtensions?: readonly string[]
   uploadRateIpMax?: number
   uploadRateTokenMax?: number
   uploadRateWindowMinutes?: number
@@ -346,6 +492,18 @@ export function setUploadPolicySettings(input: {
   }
   if (input.allowedMimeTypes !== undefined) {
     setSetting(SETTINGS_ALLOWED_MIME_TYPES, serializeAllowedMimeTypes(input.allowedMimeTypes))
+  }
+  if (input.allowedVideoExtensions !== undefined) {
+    setSetting(
+      SETTINGS_ALLOWED_VIDEO_EXTENSIONS,
+      serializeAllowedVideoExtensions(input.allowedVideoExtensions)
+    )
+  }
+  if (input.forbiddenFileExtensions !== undefined) {
+    setSetting(
+      SETTINGS_FORBIDDEN_FILE_EXTENSIONS,
+      serializeForbiddenFileExtensions(input.forbiddenFileExtensions)
+    )
   }
   if (input.uploadRateIpMax !== undefined) {
     setSetting(SETTINGS_UPLOAD_RATE_IP_MAX, String(input.uploadRateIpMax))

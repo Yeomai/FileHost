@@ -48,6 +48,9 @@ export function useMediaUpload(kind: UploadMediaKind) {
   const toast = useToast()
   const { t } = useI18n()
   const {
+    load: loadUploadPolicy
+  } = useUploadPolicy()
+  const {
     autoCopyMarkdown,
     copyFormat,
     transcodeToHls,
@@ -176,13 +179,45 @@ export function useMediaUpload(kind: UploadMediaKind) {
   async function uploadFiles(files: File[]) {
     if (!files.length || uploading.value) return
 
-    if (files.length > MAX_FILES) {
+    const currentPolicy = await loadUploadPolicy().catch(() => null)
+    const acceptedFiles = files.filter((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+      if (
+        kind === 'video'
+        && currentPolicy
+        && !currentPolicy.allowedVideoExtensions.includes(extension)
+      ) {
+        toast.add({
+          title: `${file.name}：${t('files.videoFormatBlocked', {
+            format: extension ? extension.toUpperCase() : '—'
+          })}`,
+          color: 'error'
+        })
+        return false
+      }
+      if (
+        kind === 'file'
+        && currentPolicy?.forbiddenFileExtensions.includes(extension)
+      ) {
+        toast.add({
+          title: `${file.name}：${t('files.fileFormatBlocked', {
+            format: extension.toUpperCase()
+          })}`,
+          color: 'error'
+        })
+        return false
+      }
+      return true
+    })
+    if (!acceptedFiles.length) return
+
+    if (acceptedFiles.length > MAX_FILES) {
       toast.add({ title: t('files.maxFiles', { n: MAX_FILES }), color: 'warning' })
       return
     }
 
     uploading.value = true
-    progressItems.value = files.map(file => ({
+    progressItems.value = acceptedFiles.map(file => ({
       name: file.name,
       status: 'pending',
       progress: 0
@@ -190,7 +225,7 @@ export function useMediaUpload(kind: UploadMediaKind) {
 
     try {
       const formData = new FormData()
-      for (const file of files) {
+      for (const file of acceptedFiles) {
         formData.append('files', file, file.name)
       }
 
@@ -215,7 +250,7 @@ export function useMediaUpload(kind: UploadMediaKind) {
         await loadApiToken()
       }
 
-      progressItems.value = files.map((file) => {
+      progressItems.value = acceptedFiles.map((file) => {
         const failed = response.errors.find(error => error.name === file.name)
         return {
           name: file.name,

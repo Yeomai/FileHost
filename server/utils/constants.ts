@@ -41,6 +41,8 @@ export const VIDEO_EXTENSIONS = [
   'mpeg'
 ] as const
 
+export type VideoExtension = (typeof VIDEO_EXTENSIONS)[number]
+
 /** 文件床直链缓存：公开访问可长期缓存，Token 访问不能进共享缓存 */
 export const FILE_CACHE_CONTROL
   = 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400'

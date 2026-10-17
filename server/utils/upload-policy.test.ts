@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_UPLOAD_MAX_FILE_SIZE_MB,
   normalizeAllowedMimeTypes,
+  normalizeAllowedVideoExtensions,
+  normalizeForbiddenFileExtensions,
   parseLoginRateMax,
   parsePreserveOriginalUpload,
   parseUploadMaxFileSizeMb,
   parseUploadRateIpMax,
   serializeAllowedMimeTypes,
+  serializeAllowedVideoExtensions,
+  serializeForbiddenFileExtensions,
   serializePreserveOriginalUpload
 } from './upload-policy'
 
@@ -28,6 +32,25 @@ describe('upload-policy parsers', () => {
 
   it('serializes allowed mime types in canonical order', () => {
     expect(serializeAllowedMimeTypes(['image/webp', 'image/jpeg'])).toBe('image/jpeg,image/webp')
+  })
+
+  it('normalizes and serializes allowed video extensions', () => {
+    expect(normalizeAllowedVideoExtensions('.MOV, mp4,mkv,mp4,ts')).toEqual([
+      'mov',
+      'mp4',
+      'mkv'
+    ])
+    expect(serializeAllowedVideoExtensions(['mkv', 'mp4'])).toBe('mp4,mkv')
+  })
+
+  it('normalizes and serializes forbidden file extensions', () => {
+    expect(normalizeForbiddenFileExtensions('.HTML, exe,php,exe,bad/ext')).toEqual([
+      'html',
+      'exe',
+      'php'
+    ])
+    expect(serializeForbiddenFileExtensions(['php', 'svg', 'html']))
+      .toBe('html,svg,php')
   })
 
   it('parses rate limit values', () => {

@@ -5,7 +5,7 @@ import type { AllowedMimeType } from './constants'
 import type { StoredImage } from './storage'
 import type { TagItem } from './tags'
 import { getTagsForImageKeys } from './tags'
-import { getImageBaseUrl, isHideFolderInUrl } from './env'
+import { getMediaBaseUrl, isHideFolderInUrl } from './env'
 import { toPublicImagePath } from './image-public-path'
 import { getActiveBackendRow } from './storage/resolver'
 import { getStorageBackendRow, getStorageBackendFromEnv } from './storage-backends'
@@ -130,7 +130,7 @@ export function resolveImageUrl(
       const publicPath = hideFolder ? toPublicImagePath(key, true) : objectKey
       return `${base}/${publicPath}`
     }
-    return buildImageUrl(getImageBaseUrl(event), key, hideFolder)
+    return buildImageUrl(getMediaBaseUrl(event, key), key, hideFolder)
   }
 
   const backendRow = backendId
@@ -141,7 +141,7 @@ export function resolveImageUrl(
     return buildPublicImageUrl(backendRow, key, hideFolder)
   }
 
-  return buildImageUrl(getImageBaseUrl(event), key, hideFolder)
+  return buildImageUrl(getMediaBaseUrl(event, key), key, hideFolder)
 }
 
 export function buildMarkdown(url: string, alt: string): string {

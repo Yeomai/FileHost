@@ -218,6 +218,8 @@ export function useAuth() {
     domainSeparation?: boolean
     siteBaseUrl?: string
     imageBaseUrl?: string
+    videoBaseUrl?: string
+    fileBaseUrl?: string
   }): Promise<AuthActionResult> {
     const validationError = validateAuthInput(input.username, input.password)
     if (validationError) {
@@ -236,7 +238,9 @@ export function useAuth() {
             allowRegistration: input.allowRegistration,
             domainSeparation: input.domainSeparation,
             siteBaseUrl: input.siteBaseUrl,
-            imageBaseUrl: input.imageBaseUrl
+            imageBaseUrl: input.imageBaseUrl,
+            videoBaseUrl: input.videoBaseUrl,
+            fileBaseUrl: input.fileBaseUrl
           }
         }
       )

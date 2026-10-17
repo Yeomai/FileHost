@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { H3Event } from 'h3'
 import {
+  shouldBlockFileHostRequest,
   shouldBlockImageHostRequest,
   shouldBlockSiteHostImageRequest,
-  shouldBlockUnknownHostRequest
+  shouldBlockUnknownHostRequest,
+  shouldBlockVideoHostRequest
 } from './host-isolation'
 
 function mockEvent(): H3Event {
@@ -32,6 +34,7 @@ describe('shouldBlockImageHostRequest', () => {
     expect(shouldBlockImageHostRequest(event, {
       separationActive: true,
       imageHost,
+      videoHost: 'video.example.com',
       requestHost: imageHost,
       method: 'GET',
       pathname: '/settings',
@@ -39,11 +42,25 @@ describe('shouldBlockImageHostRequest', () => {
     })).toBe(true)
   })
 
+  it('allows video paths on image host when no video domain is configured', () => {
+    const event = mockEvent()
+    expect(shouldBlockImageHostRequest(event, {
+      separationActive: true,
+      imageHost,
+      videoHost: null,
+      fileHost: null,
+      requestHost: imageHost,
+      method: 'GET',
+      pathname: '/videos/2026/08/demo.mp4'
+    })).toBe(false)
+  })
+
   it('allows image paths on image host', () => {
     const event = mockEvent()
     expect(shouldBlockImageHostRequest(event, {
       separationActive: true,
       imageHost,
+      videoHost: 'video.example.com',
       requestHost: imageHost,
       method: 'GET',
       pathname: '/images/2026/08/demo.webp',
@@ -62,6 +79,39 @@ describe('shouldBlockImageHostRequest', () => {
     })).toBe(true)
   })
 
+  it('blocks video paths on the image host', () => {
+    const event = mockEvent()
+    expect(shouldBlockImageHostRequest(event, {
+      separationActive: true,
+      imageHost,
+      videoHost: 'video.example.com',
+      requestHost: imageHost,
+      method: 'GET',
+      pathname: '/videos/2026/08/demo.mp4'
+    })).toBe(true)
+  })
+
+  it('allows admin and all media paths when one host serves every role', () => {
+    const event = mockEvent()
+    for (const pathname of [
+      '/settings',
+      '/images/2026/08/demo.webp',
+      '/videos/2026/08/demo.mp4',
+      '/files/2026/08/demo.pdf'
+    ]) {
+      expect(shouldBlockImageHostRequest(event, {
+        separationActive: true,
+        siteHost: imageHost,
+        imageHost,
+        videoHost: imageHost,
+        fileHost: imageHost,
+        requestHost: imageHost,
+        method: 'GET',
+        pathname
+      })).toBe(false)
+    }
+  })
+
   it('does not block site host admin paths', () => {
     const event = mockEvent()
     expect(shouldBlockImageHostRequest(event, {
@@ -71,6 +121,47 @@ describe('shouldBlockImageHostRequest', () => {
       method: 'GET',
       pathname: '/api/images'
     })).toBe(false)
+  })
+})
+
+describe('video and file media hosts', () => {
+  const videoHost = 'video.example.com'
+  const fileHost = 'file.example.com'
+
+  it('allows only video paths on the video host', () => {
+    const event = mockEvent()
+    expect(shouldBlockVideoHostRequest(event, {
+      separationActive: true,
+      videoHost,
+      requestHost: videoHost,
+      method: 'GET',
+      pathname: '/videos/2026/08/demo.mp4'
+    })).toBe(false)
+    expect(shouldBlockVideoHostRequest(event, {
+      separationActive: true,
+      videoHost,
+      requestHost: videoHost,
+      method: 'GET',
+      pathname: '/images/2026/08/demo.webp'
+    })).toBe(true)
+  })
+
+  it('allows only file paths on the file host', () => {
+    const event = mockEvent()
+    expect(shouldBlockFileHostRequest(event, {
+      separationActive: true,
+      fileHost,
+      requestHost: fileHost,
+      method: 'GET',
+      pathname: '/files/2026/08/demo.pdf'
+    })).toBe(false)
+    expect(shouldBlockFileHostRequest(event, {
+      separationActive: true,
+      fileHost,
+      requestHost: fileHost,
+      method: 'GET',
+      pathname: '/videos/2026/08/demo.mp4'
+    })).toBe(true)
   })
 })
 
@@ -146,6 +237,44 @@ describe('shouldBlockSiteHostImageRequest', () => {
       pathname: '/images/2026/08/demo.webp'
     })).toBe(false)
   })
+
+  it('blocks video and file paths on the site host', () => {
+    const event = mockEvent()
+    expect(shouldBlockSiteHostImageRequest(event, {
+      separationActive: true,
+      siteHost,
+      requestHost: siteHost,
+      method: 'GET',
+      pathname: '/videos/2026/08/demo.mp4'
+    })).toBe(true)
+    expect(shouldBlockSiteHostImageRequest(event, {
+      separationActive: true,
+      siteHost,
+      requestHost: siteHost,
+      method: 'GET',
+      pathname: '/files/2026/08/demo.pdf'
+    })).toBe(true)
+  })
+
+  it('allows media paths when all roles share the same host', () => {
+    const event = mockEvent()
+    for (const pathname of [
+      '/images/2026/08/demo.webp',
+      '/videos/2026/08/demo.mp4',
+      '/files/2026/08/demo.pdf'
+    ]) {
+      expect(shouldBlockSiteHostImageRequest(event, {
+        separationActive: true,
+        siteHost,
+        imageHost: siteHost,
+        videoHost: siteHost,
+        fileHost: siteHost,
+        requestHost: siteHost,
+        method: 'GET',
+        pathname
+      })).toBe(false)
+    }
+  })
 })
 
 describe('shouldBlockUnknownHostRequest', () => {
@@ -199,6 +328,26 @@ describe('shouldBlockUnknownHostRequest', () => {
       requestHost: imageHost,
       siteHost,
       imageHost
+    })).toBe(false)
+  })
+
+  it('allows configured video and file hosts', () => {
+    const event = mockEvent()
+    expect(shouldBlockUnknownHostRequest(event, {
+      separationActive: true,
+      requestHost: 'video.example.com',
+      siteHost,
+      imageHost,
+      videoHost: 'video.example.com',
+      fileHost: 'file.example.com'
+    })).toBe(false)
+    expect(shouldBlockUnknownHostRequest(event, {
+      separationActive: true,
+      requestHost: 'file.example.com',
+      siteHost,
+      imageHost,
+      videoHost: 'video.example.com',
+      fileHost: 'file.example.com'
     })).toBe(false)
   })
 

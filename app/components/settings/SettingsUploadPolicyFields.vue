@@ -1,11 +1,14 @@
 <script setup lang="ts">
 type PolicySource = 'env' | 'db' | 'default'
 type MimeType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'image/svg+xml' | 'image/x-icon'
+type VideoExtension = 'mp4' | 'm4v' | 'webm' | 'mov' | 'mkv' | 'avi' | 'flv' | 'wmv' | 'mpg' | 'mpeg'
 
-defineProps<{
+const props = defineProps<{
   part: 'upload-preference' | 'image-processing' | 'login-rate'
   uploadMaxFileSizeMbSource?: PolicySource
   allowedMimeTypesSource?: PolicySource
+  allowedVideoExtensionsSource?: PolicySource
+  forbiddenFileExtensionsSource?: PolicySource
   uploadRateIpMaxSource?: PolicySource
   uploadRateTokenMaxSource?: PolicySource
   uploadRateWindowMinutesSource?: PolicySource
@@ -13,16 +16,21 @@ defineProps<{
   loginRateWindowMinutesSource?: PolicySource
   preserveOriginalUploadSource?: PolicySource
   mimeTypeOptions?: ReadonlyArray<{ mime: MimeType, label: string }>
+  videoExtensionOptions?: ReadonlyArray<{ extension: VideoExtension, label: string }>
+  forbiddenFileExtensionOptions?: ReadonlyArray<{ extension: string, label: string }>
 }>()
 
 const uploadMaxFileSizeMbDraft = defineModel<number>('uploadMaxFileSizeMb')
 const allowedMimeTypesDraft = defineModel<MimeType[]>('allowedMimeTypes')
+const allowedVideoExtensionsDraft = defineModel<VideoExtension[]>('allowedVideoExtensions')
+const forbiddenFileExtensionsDraft = defineModel<string[]>('forbiddenFileExtensions')
 const uploadRateIpMaxDraft = defineModel<number>('uploadRateIpMax')
 const uploadRateTokenMaxDraft = defineModel<number>('uploadRateTokenMax')
 const uploadRateWindowMinutesDraft = defineModel<number>('uploadRateWindowMinutes')
 const loginRateMaxDraft = defineModel<number>('loginRateMax')
 const loginRateWindowMinutesDraft = defineModel<number>('loginRateWindowMinutes')
 const preserveOriginalUploadDraft = defineModel<boolean>('preserveOriginalUpload')
+const customForbiddenExtension = ref('')
 
 const { t } = useI18n()
 
@@ -51,6 +59,70 @@ function toggleMime(mime: MimeType, checked: boolean) {
 
 function isMimeChecked(mime: MimeType): boolean {
   return allowedMimeTypesDraft.value?.includes(mime) ?? false
+}
+
+function toggleVideoExtension(extension: VideoExtension, checked: boolean) {
+  if (!allowedVideoExtensionsDraft.value) return
+  if (checked) {
+    if (!allowedVideoExtensionsDraft.value.includes(extension)) {
+      allowedVideoExtensionsDraft.value = [
+        ...allowedVideoExtensionsDraft.value,
+        extension
+      ]
+    }
+    return
+  }
+  if (allowedVideoExtensionsDraft.value.length <= 1) return
+  allowedVideoExtensionsDraft.value = allowedVideoExtensionsDraft.value
+    .filter(item => item !== extension)
+}
+
+function isVideoExtensionChecked(extension: VideoExtension): boolean {
+  return allowedVideoExtensionsDraft.value?.includes(extension) ?? false
+}
+
+function toggleForbiddenExtension(extension: string, checked: boolean) {
+  if (!forbiddenFileExtensionsDraft.value) return
+  if (checked) {
+    if (!forbiddenFileExtensionsDraft.value.includes(extension)) {
+      forbiddenFileExtensionsDraft.value = [
+        ...forbiddenFileExtensionsDraft.value,
+        extension
+      ]
+    }
+    return
+  }
+  forbiddenFileExtensionsDraft.value = forbiddenFileExtensionsDraft.value
+    .filter(item => item !== extension)
+}
+
+function isForbiddenExtensionChecked(extension: string): boolean {
+  return forbiddenFileExtensionsDraft.value?.includes(extension) ?? false
+}
+
+const allForbiddenExtensionOptions = computed(() => {
+  const options = new Map(
+    (props.forbiddenFileExtensionOptions ?? []).map(option => [
+      option.extension,
+      option.label
+    ])
+  )
+  for (const extension of forbiddenFileExtensionsDraft.value ?? []) {
+    if (!options.has(extension)) options.set(extension, extension.toUpperCase())
+  }
+  return [...options].map(([extension, label]) => ({ extension, label }))
+})
+
+function addCustomForbiddenExtension() {
+  const values = customForbiddenExtension.value
+    .split(',')
+    .map(value => value.trim().toLowerCase().replace(/^\.+/, ''))
+    .filter(value => /^[a-z0-9][a-z0-9_-]{0,15}$/.test(value))
+  if (!values.length) return
+  const next = new Set(forbiddenFileExtensionsDraft.value ?? [])
+  for (const value of values) next.add(value)
+  forbiddenFileExtensionsDraft.value = [...next]
+  customForbiddenExtension.value = ''
 }
 
 function clampUploadMaxFileSizeMb(value: unknown): number {
@@ -118,7 +190,7 @@ function onUploadMaxFileSizeNumberInput(value: string | number) {
       </div>
     </div>
 
-    <div class="py-4">
+    <div class="border-t border-default/50 py-4">
       <div class="flex flex-wrap items-center gap-2">
         <p class="text-sm font-medium text-highlighted">
           {{ t('settings.allowedMimeTypes') }}
@@ -155,6 +227,105 @@ function onUploadMaxFileSizeNumberInput(value: string | number) {
           />
           <span class="font-medium text-highlighted">{{ option.label }}</span>
         </label>
+      </div>
+    </div>
+
+    <div class="border-t border-default/50 py-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="text-sm font-medium text-highlighted">
+          {{ t('settings.allowedVideoExtensions') }}
+        </p>
+        <UBadge
+          v-if="allowedVideoExtensionsSource"
+          :color="sourceBadge(allowedVideoExtensionsSource).color"
+          variant="subtle"
+          size="xs"
+        >
+          {{ sourceBadge(allowedVideoExtensionsSource).label }}
+        </UBadge>
+      </div>
+      <p class="mt-1 text-xs leading-relaxed text-muted">
+        {{ t('settings.allowedVideoExtensionsHint') }}
+      </p>
+      <div
+        class="mt-3 flex flex-wrap gap-2"
+        :class="allowedVideoExtensionsSource === 'env' ? 'pointer-events-none opacity-60' : ''"
+      >
+        <label
+          v-for="option in videoExtensionOptions ?? []"
+          :key="option.extension"
+          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+          :class="isVideoExtensionChecked(option.extension)
+            ? 'border-primary/40 bg-primary/5'
+            : 'border-default bg-muted/20 hover:bg-muted/40'"
+        >
+          <UCheckbox
+            :model-value="isVideoExtensionChecked(option.extension)"
+            @update:model-value="(v) => toggleVideoExtension(option.extension, v === true)"
+            @click.stop
+          />
+          <span class="font-medium text-highlighted">{{ option.label }}</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="border-t border-default/50 py-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="text-sm font-medium text-highlighted">
+          {{ t('settings.forbiddenFileExtensions') }}
+        </p>
+        <UBadge
+          v-if="forbiddenFileExtensionsSource"
+          :color="sourceBadge(forbiddenFileExtensionsSource).color"
+          variant="subtle"
+          size="xs"
+        >
+          {{ sourceBadge(forbiddenFileExtensionsSource).label }}
+        </UBadge>
+      </div>
+      <p class="mt-1 text-xs leading-relaxed text-muted">
+        {{ t('settings.forbiddenFileExtensionsHint') }}
+      </p>
+      <div
+        class="mt-3 flex flex-wrap gap-2"
+        :class="forbiddenFileExtensionsSource === 'env' ? 'pointer-events-none opacity-60' : ''"
+      >
+        <label
+          v-for="option in allForbiddenExtensionOptions"
+          :key="option.extension"
+          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+          :class="isForbiddenExtensionChecked(option.extension)
+            ? 'border-error/40 bg-error/5'
+            : 'border-default bg-muted/20 hover:bg-muted/40'"
+        >
+          <UCheckbox
+            :model-value="isForbiddenExtensionChecked(option.extension)"
+            @update:model-value="(v) => toggleForbiddenExtension(option.extension, v === true)"
+            @click.stop
+          />
+          <span class="font-medium text-highlighted">{{ option.label }}</span>
+        </label>
+      </div>
+      <div
+        class="mt-3 flex max-w-md items-center gap-2"
+        :class="forbiddenFileExtensionsSource === 'env' ? 'pointer-events-none opacity-60' : ''"
+      >
+        <UInput
+          v-model="customForbiddenExtension"
+          size="sm"
+          class="min-w-0 flex-1"
+          :placeholder="t('settings.forbiddenFileExtensionsCustomPlaceholder')"
+          :disabled="forbiddenFileExtensionsSource === 'env'"
+          @keydown.enter.prevent="addCustomForbiddenExtension"
+        />
+        <UButton
+          :label="t('settings.forbiddenFileExtensionsAdd')"
+          size="sm"
+          variant="outline"
+          color="neutral"
+          :disabled="forbiddenFileExtensionsSource === 'env'"
+          @click="addCustomForbiddenExtension"
+        />
       </div>
     </div>
 

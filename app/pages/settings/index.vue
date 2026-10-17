@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import type { SettingsTab } from '~/types/settings'
 import { ADMIN_SETTINGS_TABS, USER_SETTINGS_TABS } from '~/types/settings'
-import { willActivateDomainSeparation } from '~/utils/domain-separation'
 import SettingsUserPreferencesFields from '~/components/settings/SettingsUserPreferencesFields.vue'
 import SettingsUploadPolicyFields from '~/components/settings/SettingsUploadPolicyFields.vue'
+import SettingsVideoProcessingFields from '~/components/settings/SettingsVideoProcessingFields.vue'
 
 type SettingSource = 'env' | 'db' | 'none'
 type WebpQualitySource = 'env' | 'db' | 'default'
 type PolicySource = 'env' | 'db' | 'default'
 type LoginVerificationMethod = 'slider' | 'turnstile' | 'cap'
 type MimeType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'image/svg+xml' | 'image/x-icon'
+type VideoExtension = 'mp4' | 'm4v' | 'webm' | 'mov' | 'mkv' | 'avi' | 'flv' | 'wmv' | 'mpg' | 'mpeg'
 
 interface SettingsResponse {
   apiUploadToken: string
@@ -23,7 +24,16 @@ interface SettingsResponse {
   imageBaseUrl: string
   imageBaseUrlConfigured: string
   imageBaseUrlSource: SettingSource
+  imageDomainSeparated: boolean
+  videoBaseUrl: string
+  videoBaseUrlSource: SettingSource
+  videoDomainSeparated: boolean
+  fileBaseUrl: string
+  fileBaseUrlSource: SettingSource
+  fileDomainSeparated: boolean
   effectiveImageBaseUrl: string
+  effectiveVideoBaseUrl: string
+  effectiveFileBaseUrl: string
   siteBaseUrl: string
   siteBaseUrlConfigured: string
   siteBaseUrlSource: SettingSource
@@ -49,6 +59,10 @@ interface SettingsResponse {
   uploadMaxFileSizeMbSource: PolicySource
   allowedMimeTypes: MimeType[]
   allowedMimeTypesSource: PolicySource
+  allowedVideoExtensions: VideoExtension[]
+  allowedVideoExtensionsSource: PolicySource
+  forbiddenFileExtensions: string[]
+  forbiddenFileExtensionsSource: PolicySource
   uploadRateIpMax: number
   uploadRateIpMaxSource: PolicySource
   uploadRateTokenMax: number
@@ -63,6 +77,8 @@ interface SettingsResponse {
   preserveOriginalUploadSource: PolicySource
   fileBedAccess: 'public' | 'token'
   mimeTypeOptions: ReadonlyArray<{ mime: MimeType, label: string }>
+  videoExtensionOptions: ReadonlyArray<{ extension: VideoExtension, label: string }>
+  forbiddenFileExtensionOptions: ReadonlyArray<{ extension: string, label: string }>
 }
 
 const { isChecking, isAuthenticated, checkSession, handleAuthError, fetchStatus, isAdmin } = useAuth()
@@ -136,8 +152,11 @@ const showSaveBar = computed(() =>
 )
 
 const checkingRelease = ref(false)
-const { resetToDefaults: resetUploadPreferences } = useUploadPreferences()
+const { resetToDefaults: resetImagePreferences } = useUploadPreferences('image')
+const { resetToDefaults: resetVideoPreferences } = useUploadPreferences('video')
+const { resetToDefaults: resetFilePreferences } = useUploadPreferences('file')
 const { load: reloadUserSettings } = useUserAutoDeleteSettings()
+const { load: reloadUploadPolicy } = useUploadPolicy()
 
 const domainSeparationDocUrl = computed(() =>
   locale.value === 'en'
@@ -151,6 +170,11 @@ const savingServer = ref(false)
 const refererDraft = ref('')
 const siteBaseUrlDraft = ref('')
 const imageBaseUrlDraft = ref('')
+const videoBaseUrlDraft = ref('')
+const fileBaseUrlDraft = ref('')
+const imageDomainSeparatedDraft = ref(false)
+const videoDomainSeparatedDraft = ref(false)
+const fileDomainSeparatedDraft = ref(false)
 const hideFolderInUrlDraft = ref(false)
 const storageUseDatePathDraft = ref(true)
 const allowRegistrationDraft = ref(false)
@@ -159,13 +183,12 @@ const turnstileSiteKeyDraft = ref('')
 const turnstileSecretKeyDraft = ref('')
 const capApiEndpointDraft = ref('')
 const capSecretDraft = ref('')
-const domainSeparationDraft = ref(false)
-const disableDomainSeparationOpen = ref(false)
-const pendingDomainSeparationDisable = ref(false)
 const domainSeparationSaveConfirmOpen = ref(false)
 
 const uploadMaxFileSizeMbDraft = ref(10)
 const allowedMimeTypesDraft = ref<MimeType[]>([])
+const allowedVideoExtensionsDraft = ref<VideoExtension[]>([])
+const forbiddenFileExtensionsDraft = ref<string[]>([])
 const uploadRateIpMaxDraft = ref(60)
 const uploadRateTokenMaxDraft = ref(120)
 const uploadRateWindowMinutesDraft = ref(15)
@@ -203,9 +226,14 @@ function mimeListsEqual(left: readonly string[], right: readonly string[]): bool
 const hasServerChanges = computed(() => {
   if (!settings.value) return false
   return refererDraft.value !== settings.value.allowedRefererHosts
-    || domainSeparationDraft.value !== settings.value.domainSeparation
-    || siteBaseUrlDraft.value !== (settings.value.domainSeparation ? settings.value.siteBaseUrl : '')
+    || anyResourceDomainSeparated.value !== settings.value.domainSeparation
+    || siteBaseUrlDraft.value !== settings.value.siteBaseUrl
     || imageBaseUrlDraft.value !== settings.value.imageBaseUrl
+    || videoBaseUrlDraft.value !== settings.value.videoBaseUrl
+    || fileBaseUrlDraft.value !== settings.value.fileBaseUrl
+    || imageDomainSeparatedDraft.value !== settings.value.imageDomainSeparated
+    || videoDomainSeparatedDraft.value !== settings.value.videoDomainSeparated
+    || fileDomainSeparatedDraft.value !== settings.value.fileDomainSeparated
     || hideFolderInUrlDraft.value !== settings.value.hideFolderInUrl
     || storageUseDatePathDraft.value !== settings.value.storageUseDatePath
     || allowRegistrationDraft.value !== settings.value.allowRegistration
@@ -216,6 +244,8 @@ const hasServerChanges = computed(() => {
     || capSecretDraft.value !== settings.value.capSecret
     || uploadMaxFileSizeMbDraft.value !== settings.value.uploadMaxFileSizeMb
     || !mimeListsEqual(allowedMimeTypesDraft.value, settings.value.allowedMimeTypes)
+    || !mimeListsEqual(allowedVideoExtensionsDraft.value, settings.value.allowedVideoExtensions)
+    || !mimeListsEqual(forbiddenFileExtensionsDraft.value, settings.value.forbiddenFileExtensions)
     || uploadRateIpMaxDraft.value !== settings.value.uploadRateIpMax
     || uploadRateTokenMaxDraft.value !== settings.value.uploadRateTokenMax
     || uploadRateWindowMinutesDraft.value !== settings.value.uploadRateWindowMinutes
@@ -225,19 +255,27 @@ const hasServerChanges = computed(() => {
     || fileBedAccessDraft.value !== settings.value.fileBedAccess
 })
 
+const anyResourceDomainSeparated = computed(() =>
+  imageDomainSeparatedDraft.value
+  || videoDomainSeparatedDraft.value
+  || fileDomainSeparatedDraft.value
+)
+
 const domainSeparationWouldActivate = computed(() =>
-  willActivateDomainSeparation(
-    domainSeparationDraft.value,
-    siteBaseUrlDraft.value,
-    imageBaseUrlDraft.value
-  )
+  anyResourceDomainSeparated.value
+  && Boolean(siteBaseUrlDraft.value.trim())
 )
 
 const domainSeparationFieldsChanged = computed(() => {
   if (!settings.value) return false
-  return domainSeparationDraft.value !== settings.value.domainSeparation
-    || siteBaseUrlDraft.value !== (settings.value.domainSeparation ? settings.value.siteBaseUrl : '')
+  return anyResourceDomainSeparated.value !== settings.value.domainSeparation
+    || siteBaseUrlDraft.value !== settings.value.siteBaseUrl
     || imageBaseUrlDraft.value !== settings.value.imageBaseUrl
+    || videoBaseUrlDraft.value !== settings.value.videoBaseUrl
+    || fileBaseUrlDraft.value !== settings.value.fileBaseUrl
+    || imageDomainSeparatedDraft.value !== settings.value.imageDomainSeparated
+    || videoDomainSeparatedDraft.value !== settings.value.videoDomainSeparated
+    || fileDomainSeparatedDraft.value !== settings.value.fileDomainSeparated
 })
 
 const needsDomainSeparationSaveConfirm = computed(() =>
@@ -267,8 +305,13 @@ function errorStatus(error: unknown): number {
 function applySettings(data: SettingsResponse) {
   settings.value = data
   refererDraft.value = data.allowedRefererHosts
-  siteBaseUrlDraft.value = data.domainSeparation ? data.siteBaseUrl : ''
+  siteBaseUrlDraft.value = data.siteBaseUrl
   imageBaseUrlDraft.value = data.imageBaseUrl
+  videoBaseUrlDraft.value = data.videoBaseUrl
+  fileBaseUrlDraft.value = data.fileBaseUrl
+  imageDomainSeparatedDraft.value = data.imageDomainSeparated
+  videoDomainSeparatedDraft.value = data.videoDomainSeparated
+  fileDomainSeparatedDraft.value = data.fileDomainSeparated
   hideFolderInUrlDraft.value = data.hideFolderInUrl
   storageUseDatePathDraft.value = data.storageUseDatePath
   allowRegistrationDraft.value = data.allowRegistration
@@ -277,9 +320,10 @@ function applySettings(data: SettingsResponse) {
   turnstileSecretKeyDraft.value = data.turnstileSecretKey
   capApiEndpointDraft.value = data.capApiEndpoint
   capSecretDraft.value = data.capSecret
-  domainSeparationDraft.value = data.domainSeparation
   uploadMaxFileSizeMbDraft.value = data.uploadMaxFileSizeMb
   allowedMimeTypesDraft.value = [...data.allowedMimeTypes]
+  allowedVideoExtensionsDraft.value = [...data.allowedVideoExtensions]
+  forbiddenFileExtensionsDraft.value = [...data.forbiddenFileExtensions]
   uploadRateIpMaxDraft.value = data.uploadRateIpMax
   uploadRateTokenMaxDraft.value = data.uploadRateTokenMax
   uploadRateWindowMinutesDraft.value = data.uploadRateWindowMinutes
@@ -310,38 +354,28 @@ function handlePatchError(error: unknown, fallback: string) {
   toast.add({ title: fallback, color: 'error' })
 }
 
-function fillDetectedSiteOrigin() {
-  if (settings.value?.runtime.currentOrigin) {
-    siteBaseUrlDraft.value = settings.value.runtime.currentOrigin
-  }
+function fillDetectedOrigin(target: 'site' | 'image' | 'video' | 'file') {
+  const origin = settings.value?.runtime.currentOrigin
+  if (!origin) return
+  if (target === 'site') siteBaseUrlDraft.value = origin
+  else if (target === 'image') imageBaseUrlDraft.value = origin
+  else if (target === 'video') videoBaseUrlDraft.value = origin
+  else fileBaseUrlDraft.value = origin
 }
 
-function onDomainSeparationDraftChange(next: boolean | 'indeterminate') {
-  const enabled = next === true
-  if (!enabled && domainSeparationDraft.value) {
-    pendingDomainSeparationDisable.value = true
-    disableDomainSeparationOpen.value = true
-    return
-  }
-  domainSeparationDraft.value = enabled
-}
-
-function confirmDisableDomainSeparation() {
-  domainSeparationDraft.value = false
-  siteBaseUrlDraft.value = ''
-  disableDomainSeparationOpen.value = false
-  pendingDomainSeparationDisable.value = false
-}
-
-function cancelDisableDomainSeparation() {
-  disableDomainSeparationOpen.value = false
-  pendingDomainSeparationDisable.value = false
+function effectiveResourceDraft(
+  separated: boolean,
+  configuredUrl: string
+): string {
+  return separated
+    ? configuredUrl.trim() || settings.value?.runtime.currentOrigin || ''
+    : siteBaseUrlDraft.value.trim() || settings.value?.runtime.currentOrigin || ''
 }
 
 async function saveServerSettings() {
   if (!isAuthenticated.value || !hasServerChanges.value) return
 
-  if (domainSeparationDraft.value) {
+  if (anyResourceDomainSeparated.value) {
     if (!siteBaseUrlDraft.value.trim() || !imageBaseUrlDraft.value.trim()) {
       toast.add({ title: t('settings.domainSeparationRequired'), color: 'error' })
       return
@@ -366,12 +400,21 @@ async function performSaveServerSettings() {
       toast.add({ title: t('settings.allowedMimeTypesHint'), color: 'error' })
       return
     }
+    if (allowedVideoExtensionsDraft.value.length === 0) {
+      toast.add({ title: t('settings.allowedVideoExtensionsHint'), color: 'error' })
+      return
+    }
 
     await patchSettings({
       allowedRefererHosts: refererDraft.value,
-      domainSeparation: domainSeparationDraft.value,
-      siteBaseUrl: domainSeparationDraft.value ? siteBaseUrlDraft.value : '',
+      domainSeparation: anyResourceDomainSeparated.value,
+      siteBaseUrl: siteBaseUrlDraft.value,
       imageBaseUrl: imageBaseUrlDraft.value,
+      videoBaseUrl: videoBaseUrlDraft.value,
+      fileBaseUrl: fileBaseUrlDraft.value,
+      imageDomainSeparated: imageDomainSeparatedDraft.value,
+      videoDomainSeparated: videoDomainSeparatedDraft.value,
+      fileDomainSeparated: fileDomainSeparatedDraft.value,
       hideFolderInUrl: hideFolderInUrlDraft.value,
       storageUseDatePath: storageUseDatePathDraft.value,
       allowRegistration: allowRegistrationDraft.value,
@@ -382,6 +425,8 @@ async function performSaveServerSettings() {
       capSecret: capSecretDraft.value,
       uploadMaxFileSizeMb: uploadMaxFileSizeMbDraft.value,
       allowedMimeTypes: allowedMimeTypesDraft.value,
+      allowedVideoExtensions: allowedVideoExtensionsDraft.value,
+      forbiddenFileExtensions: forbiddenFileExtensionsDraft.value,
       uploadRateIpMax: uploadRateIpMaxDraft.value,
       uploadRateTokenMax: uploadRateTokenMaxDraft.value,
       uploadRateWindowMinutes: uploadRateWindowMinutesDraft.value,
@@ -390,6 +435,7 @@ async function performSaveServerSettings() {
       preserveOriginalUpload: preserveOriginalUploadDraft.value,
       fileBedAccess: fileBedAccessDraft.value
     })
+    await reloadUploadPolicy(true)
     toast.add({ title: t('settings.saved'), color: 'success' })
   } catch (error: unknown) {
     handlePatchError(error, t('settings.saveFailed'))
@@ -466,7 +512,9 @@ const loginVerificationOptions = computed(() => [
 
 function restoreDefaults() {
   if (activeTab.value === 'basic') {
-    resetUploadPreferences()
+    resetImagePreferences()
+    resetVideoPreferences()
+    resetFilePreferences()
     void reloadUserSettings()
   }
   if (settings.value) {
@@ -580,16 +628,22 @@ watch(isAdmin, () => {
                       <SettingsUploadPolicyFields
                         v-model:upload-max-file-size-mb="uploadMaxFileSizeMbDraft"
                         v-model:allowed-mime-types="allowedMimeTypesDraft"
+                        v-model:allowed-video-extensions="allowedVideoExtensionsDraft"
+                        v-model:forbidden-file-extensions="forbiddenFileExtensionsDraft"
                         v-model:upload-rate-ip-max="uploadRateIpMaxDraft"
                         v-model:upload-rate-token-max="uploadRateTokenMaxDraft"
                         v-model:upload-rate-window-minutes="uploadRateWindowMinutesDraft"
                         part="upload-preference"
                         :upload-max-file-size-mb-source="settings.uploadMaxFileSizeMbSource"
                         :allowed-mime-types-source="settings.allowedMimeTypesSource"
+                        :allowed-video-extensions-source="settings.allowedVideoExtensionsSource"
+                        :forbidden-file-extensions-source="settings.forbiddenFileExtensionsSource"
                         :upload-rate-ip-max-source="settings.uploadRateIpMaxSource"
                         :upload-rate-token-max-source="settings.uploadRateTokenMaxSource"
                         :upload-rate-window-minutes-source="settings.uploadRateWindowMinutesSource"
                         :mime-type-options="settings.mimeTypeOptions"
+                        :video-extension-options="settings.videoExtensionOptions"
+                        :forbidden-file-extension-options="settings.forbiddenFileExtensionOptions"
                       />
                       <SettingsUserPreferencesFields part="upload-preference" />
                     </SettingsGroup>
@@ -606,6 +660,15 @@ watch(isAdmin, () => {
                         :preserve-original-upload-source="settings.preserveOriginalUploadSource"
                       />
                       <SettingsUserPreferencesFields part="image-processing" />
+                    </SettingsGroup>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    :title="t('preferences.videoProcessing')"
+                    :hint="t('settings.videoProcessingHint')"
+                  >
+                    <SettingsGroup>
+                      <SettingsVideoProcessingFields />
                     </SettingsGroup>
                   </SettingsSection>
 
@@ -647,14 +710,8 @@ watch(isAdmin, () => {
                           {{ t('settings.runtimeDetected', { url: settings.runtime.currentOrigin }) }}
                         </span>
                       </p>
-                      <SettingsToggleRow
-                        :model-value="domainSeparationDraft"
-                        :title="t('setup.domainSeparation')"
-                        :hint="t('setup.domainSeparationHint')"
-                        @update:model-value="onDomainSeparationDraftChange"
-                      />
                       <div
-                        v-if="domainSeparationDraft"
+                        v-if="anyResourceDomainSeparated"
                         class="py-4"
                       >
                         <div class="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 sm:flex-row sm:items-start">
@@ -688,6 +745,17 @@ watch(isAdmin, () => {
                           class="mt-4"
                         />
                       </div>
+                      <SettingsDomainConfiguration
+                        v-model:site-base-url="siteBaseUrlDraft"
+                        v-model:image-base-url="imageBaseUrlDraft"
+                        v-model:video-base-url="videoBaseUrlDraft"
+                        v-model:file-base-url="fileBaseUrlDraft"
+                        v-model:image-separated="imageDomainSeparatedDraft"
+                        v-model:video-separated="videoDomainSeparatedDraft"
+                        v-model:file-separated="fileDomainSeparatedDraft"
+                        :current-origin="settings.runtime.currentOrigin"
+                        :effective-site-url="settings.effectiveSiteBaseUrl"
+                      />
                     </div>
                   </SettingsSection>
 
@@ -740,24 +808,17 @@ watch(isAdmin, () => {
                     </SettingsGroup>
                   </SettingsSection>
 
-                  <SettingsSection :title="t('settings.imageDomainSection')">
-                    <div
-                      v-if="domainSeparationDraft"
-                      class="grid gap-4 sm:grid-cols-2 sm:divide-x sm:divide-default"
-                    >
+                  <SettingsSection
+                    v-if="false && settings"
+                    :title="t('settings.resourceDomainSection')"
+                  >
+                    <div class="grid gap-4 sm:grid-cols-2">
                       <SettingsGroup>
                         <div class="space-y-3 py-4 sm:pr-4">
                           <div class="flex flex-wrap items-center gap-2">
                             <p class="text-sm font-medium text-highlighted">
                               {{ t('settings.siteBaseUrl') }}
                             </p>
-                            <UBadge
-                              color="success"
-                              variant="subtle"
-                              size="xs"
-                            >
-                              {{ t('settings.badgeEnabled') }}
-                            </UBadge>
                           </div>
                           <p class="text-xs leading-relaxed text-muted">
                             {{ t('settings.siteBaseUrlRoleHint') }}
@@ -770,21 +831,21 @@ watch(isAdmin, () => {
                               class="min-w-0 flex-1 font-mono"
                             />
                             <UButton
-                              v-if="settings.runtime.currentOrigin"
+                              v-if="settings?.runtime.currentOrigin"
                               :label="t('settings.fillDetectedOrigin')"
                               color="neutral"
                               variant="outline"
                               size="sm"
                               class="shrink-0"
-                              @click="fillDetectedSiteOrigin"
+                              @click="fillDetectedOrigin('site')"
                             />
                           </div>
                           <p
-                            v-if="settings.effectiveSiteBaseUrl"
+                            v-if="settings?.effectiveSiteBaseUrl"
                             class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
-                            :title="settings.effectiveSiteBaseUrl"
+                            :title="settings?.effectiveSiteBaseUrl"
                           >
-                            {{ t('settings.siteBaseUrlActive', { url: settings.effectiveSiteBaseUrl }) }}
+                            {{ t('settings.siteBaseUrlActive', { url: settings?.effectiveSiteBaseUrl }) }}
                           </p>
                         </div>
                       </SettingsGroup>
@@ -795,74 +856,129 @@ watch(isAdmin, () => {
                             <p class="text-sm font-medium text-highlighted">
                               {{ t('settings.imageBaseUrl') }}
                             </p>
-                            <UBadge
-                              color="success"
-                              variant="subtle"
-                              size="xs"
-                            >
-                              {{ t('settings.badgeEnabled') }}
-                            </UBadge>
+                            <USwitch v-model="imageDomainSeparatedDraft" />
                           </div>
                           <p class="text-xs leading-relaxed text-muted">
                             {{ t('settings.imageBaseUrlRoleHint') }}
                           </p>
-                          <UInput
-                            v-model="imageBaseUrlDraft"
-                            size="sm"
-                            :placeholder="t('settings.imageBaseUrlPlaceholder')"
-                            class="w-full font-mono"
-                          />
-                          <p
-                            v-if="settings.effectiveImageBaseUrl"
-                            class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
-                            :title="settings.effectiveImageBaseUrl"
+                          <div
+                            class="flex gap-2"
+                            :class="imageDomainSeparatedDraft ? '' : 'pointer-events-none opacity-50'"
                           >
-                            {{ t('settings.imageBaseUrlActive', { url: settings.effectiveImageBaseUrl }) }}
+                            <UInput
+                              v-model="imageBaseUrlDraft"
+                              size="sm"
+                              :placeholder="t('settings.imageBaseUrlPlaceholder')"
+                              class="min-w-0 flex-1 font-mono"
+                            />
+                            <UButton
+                              v-if="settings?.runtime.currentOrigin"
+                              :label="t('settings.fillDetectedOrigin')"
+                              color="neutral"
+                              variant="outline"
+                              size="sm"
+                              class="shrink-0"
+                              @click="fillDetectedOrigin('image')"
+                            />
+                          </div>
+                          <p
+                            v-if="effectiveResourceDraft(imageDomainSeparatedDraft, imageBaseUrlDraft)"
+                            class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
+                            :title="effectiveResourceDraft(imageDomainSeparatedDraft, imageBaseUrlDraft)"
+                          >
+                            {{ t('settings.imageBaseUrlActive', {
+                              url: effectiveResourceDraft(imageDomainSeparatedDraft, imageBaseUrlDraft)
+                            }) }}
+                          </p>
+                        </div>
+                      </SettingsGroup>
+
+                      <SettingsGroup>
+                        <div class="space-y-3 py-4 sm:pr-4">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-medium text-highlighted">
+                              {{ t('settings.videoBaseUrl') }}
+                            </p>
+                            <USwitch v-model="videoDomainSeparatedDraft" />
+                          </div>
+                          <p class="text-xs leading-relaxed text-muted">
+                            {{ t('settings.videoBaseUrlRoleHint') }}
+                          </p>
+                          <div
+                            class="flex gap-2"
+                            :class="videoDomainSeparatedDraft ? '' : 'pointer-events-none opacity-50'"
+                          >
+                            <UInput
+                              v-model="videoBaseUrlDraft"
+                              size="sm"
+                              :placeholder="t('settings.videoBaseUrlPlaceholder')"
+                              class="min-w-0 flex-1 font-mono"
+                            />
+                            <UButton
+                              v-if="settings?.runtime.currentOrigin"
+                              :label="t('settings.fillDetectedOrigin')"
+                              color="neutral"
+                              variant="outline"
+                              size="sm"
+                              class="shrink-0"
+                              @click="fillDetectedOrigin('video')"
+                            />
+                          </div>
+                          <p
+                            v-if="effectiveResourceDraft(videoDomainSeparatedDraft, videoBaseUrlDraft)"
+                            class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
+                            :title="effectiveResourceDraft(videoDomainSeparatedDraft, videoBaseUrlDraft)"
+                          >
+                            {{ t('settings.videoBaseUrlActive', {
+                              url: effectiveResourceDraft(videoDomainSeparatedDraft, videoBaseUrlDraft)
+                            }) }}
+                          </p>
+                        </div>
+                      </SettingsGroup>
+
+                      <SettingsGroup>
+                        <div class="space-y-3 py-4 sm:pl-4">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-medium text-highlighted">
+                              {{ t('settings.fileBaseUrl') }}
+                            </p>
+                            <USwitch v-model="fileDomainSeparatedDraft" />
+                          </div>
+                          <p class="text-xs leading-relaxed text-muted">
+                            {{ t('settings.fileBaseUrlRoleHint') }}
+                          </p>
+                          <div
+                            class="flex gap-2"
+                            :class="fileDomainSeparatedDraft ? '' : 'pointer-events-none opacity-50'"
+                          >
+                            <UInput
+                              v-model="fileBaseUrlDraft"
+                              size="sm"
+                              :placeholder="t('settings.fileBaseUrlPlaceholder')"
+                              class="min-w-0 flex-1 font-mono"
+                            />
+                            <UButton
+                              v-if="settings?.runtime.currentOrigin"
+                              :label="t('settings.fillDetectedOrigin')"
+                              color="neutral"
+                              variant="outline"
+                              size="sm"
+                              class="shrink-0"
+                              @click="fillDetectedOrigin('file')"
+                            />
+                          </div>
+                          <p
+                            v-if="effectiveResourceDraft(fileDomainSeparatedDraft, fileBaseUrlDraft)"
+                            class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
+                            :title="effectiveResourceDraft(fileDomainSeparatedDraft, fileBaseUrlDraft)"
+                          >
+                            {{ t('settings.fileBaseUrlActive', {
+                              url: effectiveResourceDraft(fileDomainSeparatedDraft, fileBaseUrlDraft)
+                            }) }}
                           </p>
                         </div>
                       </SettingsGroup>
                     </div>
-
-                    <SettingsGroup v-else>
-                      <div class="space-y-3 py-4">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <p class="text-sm font-medium text-highlighted">
-                            {{ t('settings.imageBaseUrl') }}
-                          </p>
-                          <UBadge
-                            color="success"
-                            variant="subtle"
-                            size="xs"
-                          >
-                            {{ t('settings.badgeOptional') }}
-                          </UBadge>
-                          <UBadge
-                            v-if="settings.imageBaseUrlSource === 'env'"
-                            :color="sourceBadge(settings.imageBaseUrlSource).color"
-                            variant="subtle"
-                            size="xs"
-                          >
-                            {{ sourceBadge(settings.imageBaseUrlSource).label }}
-                          </UBadge>
-                        </div>
-                        <p class="text-xs leading-relaxed text-muted">
-                          {{ t('settings.imageBaseUrlSingleHint') }}
-                        </p>
-                        <UInput
-                          v-model="imageBaseUrlDraft"
-                          size="sm"
-                          :placeholder="t('settings.imageBaseUrlPlaceholder')"
-                          class="w-full font-mono"
-                        />
-                        <p
-                          v-if="settings.effectiveImageBaseUrl"
-                          class="truncate rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted"
-                          :title="settings.effectiveImageBaseUrl"
-                        >
-                          {{ t('settings.imageBaseUrlActive', { url: settings.effectiveImageBaseUrl }) }}
-                        </p>
-                      </div>
-                    </SettingsGroup>
                   </SettingsSection>
                 </SettingsPanel>
                 <div
@@ -1067,29 +1183,6 @@ watch(isAdmin, () => {
         </div>
       </section>
     </AppShell>
-
-    <UModal
-      :open="disableDomainSeparationOpen"
-      :title="t('settings.disableDomainSeparationTitle')"
-      :description="t('settings.disableDomainSeparationDesc')"
-      @update:open="(v) => { if (!v) cancelDisableDomainSeparation() }"
-    >
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton
-            :label="t('common.cancel')"
-            color="neutral"
-            variant="outline"
-            @click="cancelDisableDomainSeparation"
-          />
-          <UButton
-            :label="t('settings.disableDomainSeparationConfirm')"
-            color="warning"
-            @click="confirmDisableDomainSeparation"
-          />
-        </div>
-      </template>
-    </UModal>
 
     <UModal
       :open="domainSeparationSaveConfirmOpen"

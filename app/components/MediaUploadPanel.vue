@@ -9,6 +9,10 @@ const props = defineProps<{
 const { t } = useI18n()
 const toast = useToast()
 const {
+  policy: uploadPolicy,
+  load: loadUploadPolicy
+} = useUploadPolicy()
+const {
   uploading,
   progressItems,
   sessionItems,
@@ -19,20 +23,44 @@ const {
 } = useMediaUpload(props.kind)
 
 onMounted(() => {
-  void loadActiveTranscodes()
+  void Promise.all([
+    loadActiveTranscodes(),
+    loadUploadPolicy().catch(() => {})
+  ])
 })
 
-const text = computed(() => props.kind === 'video'
-  ? {
-      uploadTitle: t('library.video.uploadTitle'),
-      uploadHint: t('library.video.uploadHint'),
-      uploadFormats: t('library.video.uploadFormats')
-    }
-  : {
-      uploadTitle: t('library.file.uploadTitle'),
-      uploadHint: t('library.file.uploadHint'),
-      uploadFormats: t('library.file.uploadFormats')
-    })
+const text = computed(() => {
+  const allowedVideos = uploadPolicy.value?.allowedVideoExtensions ?? []
+  const forbiddenFiles = uploadPolicy.value?.forbiddenFileExtensions ?? []
+  return props.kind === 'video'
+    ? {
+        uploadTitle: t('library.video.uploadTitle'),
+        uploadHint: t('library.video.uploadHint'),
+        uploadFormats: allowedVideos.length
+          ? t('library.video.uploadFormatsAllowed', {
+              formats: allowedVideos.map(item => item.toUpperCase()).join(' / ')
+            })
+          : t('library.video.uploadFormats')
+      }
+    : {
+        uploadTitle: t('library.file.uploadTitle'),
+        uploadHint: t('library.file.uploadHint'),
+        uploadFormats: forbiddenFiles.length
+          ? t('library.file.uploadFormatsBlocked', {
+              formats: forbiddenFiles.map(item => item.toUpperCase()).join(' / ')
+            })
+          : t('library.file.uploadFormatsUnrestricted')
+      }
+})
+
+const accept = computed(() => {
+  if (props.kind !== 'video') return undefined
+  const extensions = uploadPolicy.value?.allowedVideoExtensions ?? []
+  if (!extensions.length) return undefined
+  return extensions
+    .map(extension => `.${extension}`)
+    .join(',')
+})
 
 const showProgress = computed(() =>
   uploading.value
@@ -66,6 +94,7 @@ async function removeItem(item: FileItem) {
       :title="text.uploadTitle"
       :hint="text.uploadHint"
       :formats="text.uploadFormats"
+      :accept="accept"
       :disabled="uploading"
       @upload="uploadFiles"
     />

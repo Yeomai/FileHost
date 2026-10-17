@@ -26,6 +26,8 @@ const allowRegistration = ref(false)
 const domainSeparation = ref(false)
 const siteBaseUrl = ref('')
 const imageBaseUrl = ref('')
+const videoBaseUrl = ref('')
+const fileBaseUrl = ref('')
 const loading = ref(false)
 const domainSeparationConfirmOpen = ref(false)
 
@@ -180,7 +182,9 @@ async function performSubmit() {
       allowRegistration: allowRegistration.value,
       domainSeparation: domainSeparation.value,
       siteBaseUrl: domainSeparation.value ? siteBaseUrl.value.trim() : undefined,
-      imageBaseUrl: domainSeparation.value ? imageBaseUrl.value.trim() : undefined
+      imageBaseUrl: domainSeparation.value ? imageBaseUrl.value.trim() : undefined,
+      videoBaseUrl: domainSeparation.value ? videoBaseUrl.value.trim() : undefined,
+      fileBaseUrl: domainSeparation.value ? fileBaseUrl.value.trim() : undefined
     }
     const result = isMigrate.value
       ? await migrate(payload)
@@ -360,6 +364,28 @@ async function performSubmit() {
               <UInput
                 v-model="imageBaseUrl"
                 :placeholder="t('setup.imageBaseUrlPlaceholder')"
+                class="w-full font-mono text-sm"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm">{{ t('setup.videoBaseUrl') }}</label>
+              <p class="text-xs text-muted">
+                {{ t('setup.videoBaseUrlHint') }}
+              </p>
+              <UInput
+                v-model="videoBaseUrl"
+                :placeholder="t('setup.videoBaseUrlPlaceholder')"
+                class="w-full font-mono text-sm"
+              />
+            </div>
+            <div class="space-y-2">
+              <label class="text-sm">{{ t('setup.fileBaseUrl') }}</label>
+              <p class="text-xs text-muted">
+                {{ t('setup.fileBaseUrlHint') }}
+              </p>
+              <UInput
+                v-model="fileBaseUrl"
+                :placeholder="t('setup.fileBaseUrlPlaceholder')"
                 class="w-full font-mono text-sm"
               />
             </div>

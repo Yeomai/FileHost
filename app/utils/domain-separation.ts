@@ -8,7 +8,7 @@ export function hostnameFromBaseUrl(value: string): string | null {
   }
 }
 
-/** 勾选分离且网站域、图片域主机名不同 → 保存后将启用双域名中间件隔离 */
+/** 勾选分离且后台域、图片域主机名不同 → 保存后启用多域名中间件隔离 */
 export function willActivateDomainSeparation(
   enabled: boolean,
   siteBaseUrl: string,

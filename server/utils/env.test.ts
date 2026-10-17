@@ -244,17 +244,35 @@ describe('validateDomainSeparationPair', () => {
     expect(validateDomainSeparationPair('', 'https://pic.example.com')).toContain('同时填写')
   })
 
-  it('rejects identical hostnames', () => {
+  it('allows identical hostnames for compatible multi-role hosting', () => {
     expect(validateDomainSeparationPair(
       'https://same.example.com',
       'https://same.example.com'
-    )).toContain('相同主机名')
+    )).toBeNull()
   })
 
   it('accepts different hostnames', () => {
     expect(validateDomainSeparationPair(
       'https://admin.example.com',
       'https://pic.example.com'
+    )).toBeNull()
+  })
+
+  it('accepts distinct image, video and file hostnames', () => {
+    expect(validateDomainSeparationPair(
+      'https://admin.example.com',
+      'https://pic.example.com',
+      'https://video.example.com',
+      'https://file.example.com'
+    )).toBeNull()
+  })
+
+  it('allows duplicate media hostnames', () => {
+    expect(validateDomainSeparationPair(
+      'https://admin.example.com',
+      'https://pic.example.com',
+      'https://pic.example.com',
+      'https://file.example.com'
     )).toBeNull()
   })
 })

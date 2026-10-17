@@ -9,6 +9,12 @@ import {
   SETTINGS_STORAGE_USE_DATE_PATH,
   SETTINGS_IMAGE_BASE_URL,
   SETTINGS_SITE_BASE_URL,
+  SETTINGS_VIDEO_BASE_URL,
+  SETTINGS_FILE_BASE_URL,
+  SETTINGS_DOMAIN_SEPARATION,
+  SETTINGS_IMAGE_DOMAIN_SEPARATED,
+  SETTINGS_VIDEO_DOMAIN_SEPARATED,
+  SETTINGS_FILE_DOMAIN_SEPARATED,
   SETTINGS_WEBP_QUALITY,
   SETTINGS_LOGIN_VERIFICATION_METHOD,
   SETTINGS_TURNSTILE_SITE_KEY,
@@ -28,6 +34,8 @@ import {
   parseLoginVerificationMethod,
   MAX_AUTO_DELETE_DAYS,
   normalizeImageBaseUrl,
+  normalizeVideoBaseUrl,
+  normalizeFileBaseUrl,
   normalizeRefererHosts,
   normalizeSiteBaseUrl,
   parseAutoDeleteDays,
@@ -38,6 +46,8 @@ import {
 } from '../../utils/env'
 import {
   normalizeAllowedMimeTypes,
+  normalizeAllowedVideoExtensions,
+  normalizeForbiddenFileExtensions,
   parseLoginRateMax,
   parseLoginRateWindowMinutes,
   parseUploadMaxFileSizeMb,
@@ -52,6 +62,11 @@ interface SettingsPatchBody {
   allowedRefererHosts?: unknown
   siteBaseUrl?: unknown
   imageBaseUrl?: unknown
+  videoBaseUrl?: unknown
+  fileBaseUrl?: unknown
+  imageDomainSeparated?: unknown
+  videoDomainSeparated?: unknown
+  fileDomainSeparated?: unknown
   domainSeparation?: unknown
   hideFolderInUrl?: unknown
   storageUseDatePath?: unknown
@@ -64,6 +79,8 @@ interface SettingsPatchBody {
   capSecret?: unknown
   uploadMaxFileSizeMb?: unknown
   allowedMimeTypes?: unknown
+  allowedVideoExtensions?: unknown
+  forbiddenFileExtensions?: unknown
   uploadRateIpMax?: unknown
   uploadRateTokenMax?: unknown
   uploadRateWindowMinutes?: unknown
@@ -109,8 +126,18 @@ export default defineEventHandler(async (event) => {
 
   const existingSite = normalizeSiteBaseUrl(getSetting(SETTINGS_SITE_BASE_URL) ?? '')
   const existingImage = normalizeImageBaseUrl(getSetting(SETTINGS_IMAGE_BASE_URL) ?? '')
+  const existingVideo = normalizeVideoBaseUrl(getSetting(SETTINGS_VIDEO_BASE_URL) ?? '')
+  const existingFile = normalizeFileBaseUrl(getSetting(SETTINGS_FILE_BASE_URL) ?? '')
+  const existingImageSeparated = getSetting(SETTINGS_IMAGE_DOMAIN_SEPARATED) === 'true'
+  const existingVideoSeparated = getSetting(SETTINGS_VIDEO_DOMAIN_SEPARATED) === 'true'
+  const existingFileSeparated = getSetting(SETTINGS_FILE_DOMAIN_SEPARATED) === 'true'
   let nextSite = existingSite
   let nextImage = existingImage
+  let nextVideo = existingVideo
+  let nextFile = existingFile
+  let nextImageSeparated = existingImageSeparated
+  let nextVideoSeparated = existingVideoSeparated
+  let nextFileSeparated = existingFileSeparated
 
   if (body.siteBaseUrl !== undefined) {
     const configured = normalizeSiteBaseUrl(
@@ -142,6 +169,36 @@ export default defineEventHandler(async (event) => {
     nextImage = configured
   }
 
+  if (body.videoBaseUrl !== undefined) {
+    const configured = normalizeVideoBaseUrl(
+      typeof body.videoBaseUrl === 'string' ? body.videoBaseUrl : ''
+    )
+    if (configured && !isValidImageBaseUrl(configured)) {
+      createApiError(event, 'INVALID_REQUEST', '视频域名需为 http(s) 地址，且末尾不加 /', 400)
+    }
+    nextVideo = configured
+  }
+
+  if (body.fileBaseUrl !== undefined) {
+    const configured = normalizeFileBaseUrl(
+      typeof body.fileBaseUrl === 'string' ? body.fileBaseUrl : ''
+    )
+    if (configured && !isValidImageBaseUrl(configured)) {
+      createApiError(event, 'INVALID_REQUEST', '文件域名需为 http(s) 地址，且末尾不加 /', 400)
+    }
+    nextFile = configured
+  }
+
+  if (body.imageDomainSeparated !== undefined) {
+    nextImageSeparated = Boolean(body.imageDomainSeparated)
+  }
+  if (body.videoDomainSeparated !== undefined) {
+    nextVideoSeparated = Boolean(body.videoDomainSeparated)
+  }
+  if (body.fileDomainSeparated !== undefined) {
+    nextFileSeparated = Boolean(body.fileDomainSeparated)
+  }
+
   const domainSeparationProvided = body.domainSeparation !== undefined
   const wantSeparation = domainSeparationProvided
     ? Boolean(body.domainSeparation)
@@ -150,17 +207,36 @@ export default defineEventHandler(async (event) => {
   const patchError = validateSettingsDomainPatch({
     existingSite,
     existingImage,
+    existingVideo,
+    existingFile,
     nextSite,
     nextImage,
+    nextVideo,
+    nextFile,
     wantSeparation,
     siteBaseUrlProvided: body.siteBaseUrl !== undefined
   })
   if (patchError) {
     createApiError(event, 'INVALID_REQUEST', patchError, 400)
   }
+  if (wantSeparation === true) {
+    if (nextImageSeparated && !nextImage) {
+      createApiError(event, 'INVALID_REQUEST', '开启图片独立域名时必须填写图片域名', 400)
+    }
+    if (nextVideoSeparated && !nextVideo) {
+      createApiError(event, 'INVALID_REQUEST', '开启视频独立域名时必须填写视频域名', 400)
+    }
+    if (nextFileSeparated && !nextFile) {
+      createApiError(event, 'INVALID_REQUEST', '开启文件独立域名时必须填写文件域名', 400)
+    }
+  }
 
   if (wantSeparation === false) {
     nextSite = ''
+  }
+
+  if (body.domainSeparation !== undefined) {
+    setSetting(SETTINGS_DOMAIN_SEPARATION, wantSeparation ? 'true' : 'false')
   }
 
   if (body.siteBaseUrl !== undefined || body.domainSeparation !== undefined) {
@@ -169,6 +245,21 @@ export default defineEventHandler(async (event) => {
 
   if (body.imageBaseUrl !== undefined) {
     setSetting(SETTINGS_IMAGE_BASE_URL, nextImage)
+  }
+  if (body.videoBaseUrl !== undefined || body.domainSeparation !== undefined) {
+    setSetting(SETTINGS_VIDEO_BASE_URL, nextVideo)
+  }
+  if (body.fileBaseUrl !== undefined || body.domainSeparation !== undefined) {
+    setSetting(SETTINGS_FILE_BASE_URL, nextFile)
+  }
+  if (body.imageDomainSeparated !== undefined) {
+    setSetting(SETTINGS_IMAGE_DOMAIN_SEPARATED, nextImageSeparated ? 'true' : 'false')
+  }
+  if (body.videoDomainSeparated !== undefined) {
+    setSetting(SETTINGS_VIDEO_DOMAIN_SEPARATED, nextVideoSeparated ? 'true' : 'false')
+  }
+  if (body.fileDomainSeparated !== undefined) {
+    setSetting(SETTINGS_FILE_DOMAIN_SEPARATED, nextFileSeparated ? 'true' : 'false')
   }
 
   if (body.autoDeleteDays !== undefined) {
@@ -287,6 +378,26 @@ export default defineEventHandler(async (event) => {
       createApiError(event, 'INVALID_REQUEST', '至少选择一种允许上传的图片格式', 400)
     }
     setUploadPolicySettings({ allowedMimeTypes: normalized })
+  }
+
+  if (body.allowedVideoExtensions !== undefined) {
+    const raw = Array.isArray(body.allowedVideoExtensions)
+      ? body.allowedVideoExtensions.map(item => String(item))
+      : String(body.allowedVideoExtensions).split(',')
+    const normalized = normalizeAllowedVideoExtensions(raw.join(','))
+    if (normalized.length === 0) {
+      createApiError(event, 'INVALID_REQUEST', '至少选择一种允许上传的视频格式', 400)
+    }
+    setUploadPolicySettings({ allowedVideoExtensions: normalized })
+  }
+
+  if (body.forbiddenFileExtensions !== undefined) {
+    const raw = Array.isArray(body.forbiddenFileExtensions)
+      ? body.forbiddenFileExtensions.map(item => String(item))
+      : String(body.forbiddenFileExtensions).split(',')
+    setUploadPolicySettings({
+      forbiddenFileExtensions: normalizeForbiddenFileExtensions(raw.join(','))
+    })
   }
 
   if (body.uploadRateIpMax !== undefined) {
