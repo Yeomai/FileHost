@@ -180,6 +180,11 @@ const presetLabel = computed(() => {
         </UBadge>
       </p>
 
+      <TagBadgeList
+        :tags="item.tags"
+        compact
+      />
+
       <UProgress
         v-if="running"
         :model-value="item.transcodeProgress ?? 0"

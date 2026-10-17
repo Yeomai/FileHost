@@ -21,11 +21,15 @@ const {
   loadActiveTranscodes,
   uploadFiles
 } = useMediaUpload(props.kind)
+const { items: tagItems, fetchTags, batchUpdateTags } = useTags()
+const { recordRecent } = useRecentTags()
+const batchTagOpen = ref(false)
 
 onMounted(() => {
   void Promise.all([
     loadActiveTranscodes(),
-    loadUploadPolicy().catch(() => {})
+    loadUploadPolicy().catch(() => {}),
+    fetchTags()
   ])
 })
 
@@ -89,6 +93,27 @@ async function removeItem(item: FileItem) {
     toast.add({ title: t('files.deleteFailed'), color: 'error' })
   }
 }
+
+async function confirmBatchTags(tagIds: number[]) {
+  const keys = sessionItems.value.map(item => item.key)
+  if (!keys.length || !tagIds.length) return
+
+  try {
+    await batchUpdateTags(keys, tagIds, 'add')
+    batchTagOpen.value = false
+    recordRecent(tagIds)
+    await fetchTags(true)
+    const addedTags = tagItems.value.filter(tag => tagIds.includes(tag.id))
+    sessionItems.value = sessionItems.value.map((item) => {
+      const merged = new Map((item.tags ?? []).map(tag => [tag.id, tag]))
+      for (const tag of addedTags) merged.set(tag.id, tag)
+      return { ...item, tags: [...merged.values()] }
+    })
+    toast.add({ title: t('tags.batchSuccess'), color: 'success' })
+  } catch {
+    toast.add({ title: t('tags.batchFailed'), color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -112,10 +137,20 @@ async function removeItem(item: FileItem) {
       v-if="sessionItems.length"
       class="space-y-4"
     >
-      <h2 class="text-lg font-medium">
-        {{ t('upload.sessionTitle') }}
-        <span class="ml-1 text-sm font-normal text-muted">({{ sessionItems.length }})</span>
-      </h2>
+      <div class="flex w-full items-center justify-between gap-2">
+        <h2 class="text-lg font-medium">
+          {{ t('upload.sessionTitle') }}
+          <span class="ml-1 text-sm font-normal text-muted">({{ sessionItems.length }})</span>
+        </h2>
+        <UButton
+          icon="i-lucide-tags"
+          variant="outline"
+          color="primary"
+          size="sm"
+          :label="t('tags.batchTagAll')"
+          @click="() => { batchTagOpen = true }"
+        />
+      </div>
 
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <MediaSessionCard
@@ -129,5 +164,13 @@ async function removeItem(item: FileItem) {
         />
       </div>
     </section>
+
+    <BatchTagModal
+      v-model:open="batchTagOpen"
+      :tags="tagItems"
+      :selected-count="sessionItems.length"
+      add-only
+      @confirm="confirmBatchTags"
+    />
   </div>
 </template>
