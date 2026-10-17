@@ -35,6 +35,7 @@ export interface ImageIndexRow {
   backend_id: string
   user_id: number | null
   folder: string
+  media_type: MediaType
   original_name: string
   content_type: string
   size: number
@@ -71,6 +72,7 @@ function rowToStoredImage(row: ImageIndexRow): StoredImage {
     contentType: row.content_type,
     size: row.size,
     userId: row.user_id,
+    mediaType: row.media_type,
     hlsKey: row.hls_key ?? null,
     transcodeStatus: (row.transcode_status ?? 'none') as TranscodeStatus,
     transcodeProgress: Number(row.transcode_progress ?? 0),
@@ -232,7 +234,7 @@ export async function purgeOrphanImageIndexRows(): Promise<number> {
 export function getImageIndexRow(key: string): ImageIndexRow | null {
   ensureStorageSchema()
   const row = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE key = ?
   `).get(key) as ImageIndexRow | undefined
@@ -425,16 +427,30 @@ export function getImageTotals(): { count: number, bytes: number } {
 export function listAllImageIndexRows(): ImageIndexRow[] {
   ensureStorageSchema()
   return getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     ORDER BY key ASC
   `).all() as unknown as ImageIndexRow[]
 }
 
+export function listImageIndexRowsAfter(
+  afterKey: string,
+  limit: number
+): ImageIndexRow[] {
+  ensureStorageSchema()
+  return getDb().prepare(`
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    FROM images
+    WHERE key > ?
+    ORDER BY key ASC
+    LIMIT ?
+  `).all(afterKey, limit) as unknown as ImageIndexRow[]
+}
+
 export function listImageIndexRowsForUser(userId: number): ImageIndexRow[] {
   ensureStorageSchema()
   return getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE user_id = ?
     ORDER BY key ASC
@@ -444,7 +460,7 @@ export function listImageIndexRowsForUser(userId: number): ImageIndexRow[] {
 export function listImageIndexRowsByBackend(backendId: string): ImageIndexRow[] {
   ensureStorageSchema()
   return getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE backend_id = ?
     ORDER BY key ASC
@@ -687,7 +703,7 @@ export async function listImages(options: {
   const backendSql = buildBackendFilterSql(options.backendId, params)
   const tagSql = buildTagFilterSql(options.tagFilter, params)
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE ${clauses.join(' AND ')}${userSql}${backendSql}${tagSql}
     ORDER BY uploaded_at DESC, key DESC
@@ -733,7 +749,7 @@ export async function searchImages(options: {
   const backendSql = buildBackendFilterSql(options.backendId, params)
   const tagSql = buildTagFilterSql(options.tagFilter, params)
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE ${clauses.join(' AND ')}${userSql}${backendSql}${tagSql}
     ORDER BY uploaded_at DESC, key DESC
@@ -867,7 +883,7 @@ export async function getUserScopedStorageStats(
 export async function listImageKeysForAutoDelete(): Promise<StoredImage[]> {
   ensureStorageSchema()
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_error
     FROM images
     WHERE media_type = 'image'
     ORDER BY uploaded_at ASC

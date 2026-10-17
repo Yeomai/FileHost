@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { BackupJobItem, SyncDraft } from '~/types/backup'
+import type {
+  BackupJobItem,
+  SiteSyncRequest,
+  SyncDraft
+} from '~/types/backup'
 import type { StorageBackendItem } from '~/types/storage'
 
 const props = defineProps<{
@@ -31,6 +35,7 @@ const {
   confirmRestore,
   previewSync,
   startSync,
+  startSiteSync,
   retryJob,
   cancelJob,
   downloadUrl
@@ -45,6 +50,14 @@ const activeJob = computed(() => getActiveJob())
 const exportBusy = computed(() => activeJob.value?.type === 'full_export')
 const restoreBusy = computed(() => activeJob.value?.type === 'full_restore')
 const syncBusy = computed(() => activeJob.value?.type === 'backend_sync')
+const siteSyncBusy = computed(() => activeJob.value?.type === 'site_sync')
+const resumableSiteSyncJob = computed(() =>
+  jobs.value.find(job =>
+    job.type === 'site_sync'
+    && job.status === 'failed'
+    && job.payload.resumable === true
+  ) ?? null
+)
 const anyJobBusy = computed(() => Boolean(activeJob.value))
 
 onMounted(async () => {
@@ -92,6 +105,10 @@ async function onSync(body: {
   setDefault: boolean
 }) {
   await startSync(body)
+}
+
+async function onSiteSync(body: SiteSyncRequest) {
+  await startSiteSync(body)
 }
 
 function onDownload(jobId: string) {
@@ -158,6 +175,14 @@ function onViewJob(job: BackupJobItem) {
         @sync="onSync"
       />
     </div>
+
+    <StorageSiteSyncCard
+      :busy="siteSyncBusy"
+      :disabled="anyJobBusy && !siteSyncBusy"
+      :active-job="siteSyncBusy ? activeJob : null"
+      :resumable-job="resumableSiteSyncJob"
+      @sync="onSiteSync"
+    />
 
     <StorageBackupJobTable
       :jobs="jobs"

@@ -3,7 +3,8 @@ import type {
   BackupJobItem,
   BackupPackageItem,
   BackupRestorePreview,
-  BackendSyncPreview
+  BackendSyncPreview,
+  SiteSyncRequest
 } from '~/types/backup'
 
 const jobs = ref<BackupJobItem[]>([])
@@ -255,6 +256,26 @@ export function useBackup() {
     }
   }
 
+  async function startSiteSync(body: SiteSyncRequest) {
+    try {
+      const data = await $fetch<{ job: BackupJobItem }>(
+        '/api/admin/site-sync',
+        {
+          method: 'POST',
+          credentials: 'include',
+          body
+        }
+      )
+      await refreshJobsFirstPage()
+      startPolling()
+      toast.add({ title: t('storage.backup.siteSyncStarted'), color: 'success' })
+      return data.job
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.siteSyncFailed'))
+      throw error
+    }
+  }
+
   async function retryJob(jobId: string) {
     try {
       await $fetch(`/api/admin/backup/jobs/${jobId}/retry`, {
@@ -312,6 +333,7 @@ export function useBackup() {
     confirmRestore,
     previewSync,
     startSync,
+    startSiteSync,
     retryJob,
     cancelJob,
     downloadUrl

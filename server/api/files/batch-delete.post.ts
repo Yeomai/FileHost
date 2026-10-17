@@ -3,7 +3,7 @@ import { assertImageOwnership, requireApiOrAdminAuth } from '../../utils/access'
 import { createApiError } from '../../utils/api-error'
 import { logActivity } from '../../utils/activity-log'
 import { deleteImageIndex, getImageIndexRow } from '../../utils/image-index'
-import { validateFileKey, validateVideoKey } from '../../utils/image-key'
+import { validateStorageKey, validateVideoKey } from '../../utils/image-key'
 import { deleteImage, headImage } from '../../utils/storage'
 import { cancelTranscode, removeHlsArtifacts } from '../../utils/transcode'
 import { MAX_DELETE_BATCH } from '../../utils/constants'
@@ -31,7 +31,7 @@ export default defineEventHandler(async (event) => {
   const failed: BatchDeleteResponse['failed'] = []
 
   for (const key of keys) {
-    if (!validateFileKey(key) && !validateVideoKey(key)) {
+    if (!validateStorageKey(key)) {
       failed.push({ key, error: { code: 'INVALID_IMAGE_KEY', message: '无效的文件路径' } })
       continue
     }

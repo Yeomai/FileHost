@@ -3,7 +3,7 @@ import { assertImageOwnership, requireApiOrAdminAuth } from '../../utils/access'
 import { createApiError } from '../../utils/api-error'
 import { logActivity } from '../../utils/activity-log'
 import { deleteImageIndex, getImageIndexRow } from '../../utils/image-index'
-import { validateFileKey, validateVideoKey } from '../../utils/image-key'
+import { validateStorageKey, validateVideoKey } from '../../utils/image-key'
 import { deleteImage, headImage } from '../../utils/storage'
 import { cancelTranscode, removeHlsArtifacts } from '../../utils/transcode'
 import { logInfo } from '../../utils/logger'
@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
     const body = await readBody<DeleteBody>(event).catch(() => null)
     const key = (typeof query.key === 'string' ? query.key : undefined) ?? body?.key
 
-    if (!key || (!validateFileKey(key) && !validateVideoKey(key))) {
+    if (!key || !validateStorageKey(key)) {
       createApiError(event, 'INVALID_IMAGE_KEY', '无效的文件路径', 400)
     }
 

@@ -1,5 +1,6 @@
-export type BackupJobType = 'full_export' | 'full_restore' | 'backend_sync'
+export type BackupJobType = 'full_export' | 'full_restore' | 'backend_sync' | 'site_sync'
 export type BackupJobStatus = 'pending' | 'running' | 'done' | 'failed'
+export type SiteSyncDirection = 'push' | 'pull'
 
 export interface BackupJobItem {
   id: string
@@ -50,4 +51,12 @@ export interface BackendSyncPreview {
 export interface SyncDraft {
   fromBackendId: string
   toBackendId: string
+}
+
+export interface SiteSyncRequest {
+  targetBaseUrl: string
+  token: string
+  conflictMode: 'skip' | 'overwrite'
+  direction: SiteSyncDirection
+  resumeJobId?: string
 }

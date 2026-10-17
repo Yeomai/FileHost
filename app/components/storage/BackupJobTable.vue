@@ -26,7 +26,8 @@ function typeLabel(type: BackupJobItem['type']): string {
   const map: Record<BackupJobItem['type'], string> = {
     full_export: t('storage.backup.jobTypeExport'),
     full_restore: t('storage.backup.jobTypeRestore'),
-    backend_sync: t('storage.backup.jobTypeSync')
+    backend_sync: t('storage.backup.jobTypeSync'),
+    site_sync: t('storage.backup.jobTypeSiteSync')
   }
   return map[type]
 }

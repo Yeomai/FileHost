@@ -8,6 +8,7 @@ const row: ImageIndexRow = {
   backend_id: 'local',
   user_id: 1,
   folder: 'videos',
+  media_type: 'video',
   original_name: 'example.mp4',
   content_type: 'video/mp4',
   size: 100,

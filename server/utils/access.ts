@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { findUserByApiToken, getPrimaryAdminUserId } from './db'
+import { findUserById, findUserByApiToken, getPrimaryAdminUserId } from './db'
 import { getAdminSecret, getApiUploadToken } from './env'
 import { createApiError } from './api-error'
 import {
@@ -108,6 +108,36 @@ export function resolveUserIdFromApiToken(
   }
 
   return null
+}
+
+/** 两站点同步：全站 Token 或管理员个人 Token；也允许管理员网页会话。 */
+export async function requireSiteSyncAuth(event: H3Event): Promise<AuthUser> {
+  if (devBypass(event)) {
+    return { id: 0, username: 'dev', role: 'admin' }
+  }
+
+  if (verifyGlobalApiUploadToken(event)) {
+    const adminId = getPrimaryAdminUserId()
+    if (adminId != null) {
+      const admin = findUserById(adminId)
+      if (admin) {
+        return { id: admin.id, username: admin.username, role: admin.role }
+      }
+    }
+  }
+
+  const userId = resolveUserIdFromApiToken(event)
+  if (userId != null) {
+    const user = findUserById(userId)
+    if (user?.role === 'admin') {
+      return { id: user.id, username: user.username, role: user.role }
+    }
+  }
+
+  const sessionUser = await getCurrentUser(event)
+  if (sessionUser?.role === 'admin') return sessionUser
+
+  createApiError(event, 'FORBIDDEN', '需要目标站点管理员同步 Token', 403)
 }
 
 export function verifyApiUploadToken(event: H3Event): boolean {

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { getDb, getPrimaryAdminUserId } from '../db'
 import { ensureBackupSchema } from './schema'
 
-export type BackupJobType = 'full_export' | 'full_restore' | 'backend_sync'
+export type BackupJobType = 'full_export' | 'full_restore' | 'backend_sync' | 'site_sync'
 export type BackupJobStatus = 'pending' | 'running' | 'done' | 'failed'
 
 export interface BackupJob {

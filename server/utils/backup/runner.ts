@@ -1,6 +1,7 @@
 import { runBackendSyncJob } from './backend-sync'
 import { runFullExportJob } from './full-export'
 import { runFullRestoreJob } from './full-restore'
+import { registerSiteSyncToken, runSiteSyncJob, type SiteSyncOptions } from '../site-sync/runner'
 import {
   createBackupJob,
   getBackupJob,
@@ -112,5 +113,57 @@ export function startBackendSyncJob(options: {
     payload: options
   })
   scheduleBackupJob(job, () => runBackendSyncJob(job.id, options))
+  return getBackupJob(job.id)!
+}
+
+export function startSiteSyncJob(
+  options: SiteSyncOptions,
+  token: string,
+  userId?: number | null
+): BackupJob {
+  claimJobSlot()
+  const job = createBackupJob({
+    type: 'site_sync',
+    userId,
+    message: '等待开始…',
+    payload: {
+      targetBaseUrl: options.targetBaseUrl,
+      conflictMode: options.conflictMode,
+      direction: options.direction
+    }
+  })
+  registerSiteSyncToken(job.id, token)
+  scheduleBackupJob(job, () => runSiteSyncJob(job.id, options))
+  return getBackupJob(job.id)!
+}
+
+export function resumeSiteSyncJob(
+  jobId: string,
+  token: string,
+  userId?: number | null
+): BackupJob {
+  claimJobSlot()
+  const job = getBackupJob(jobId, userId ?? undefined)
+  if (
+    !job
+    || job.type !== 'site_sync'
+    || job.status !== 'failed'
+    || job.payload.resumable !== true
+  ) {
+    throw new Error('SITE_SYNC_JOB_NOT_RESUMABLE')
+  }
+  const targetBaseUrl = typeof job.payload.targetBaseUrl === 'string'
+    ? job.payload.targetBaseUrl
+    : ''
+  const conflictMode = job.payload.conflictMode === 'skip' ? 'skip' : 'overwrite'
+  const direction = job.payload.direction === 'pull' ? 'pull' : 'push'
+  if (!targetBaseUrl) throw new Error('SITE_SYNC_JOB_NOT_RESUMABLE')
+
+  registerSiteSyncToken(job.id, token)
+  scheduleBackupJob(job, () => runSiteSyncJob(job.id, {
+    targetBaseUrl,
+    conflictMode,
+    direction
+  }))
   return getBackupJob(job.id)!
 }
