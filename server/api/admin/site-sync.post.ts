@@ -12,6 +12,8 @@ interface SiteSyncBody {
   token?: string
   conflictMode?: 'skip' | 'overwrite'
   direction?: 'push' | 'pull'
+  scope?: 'all' | 'image' | 'video' | 'file'
+  keys?: string[]
   resumeJobId?: string
   abandonJobId?: string
 }
@@ -49,7 +51,13 @@ export default defineEventHandler(async (event) => {
       job = startSiteSyncJob({
         targetBaseUrl: targetUrl.toString(),
         conflictMode,
-        direction
+        direction,
+        scope: body?.scope === 'image' || body?.scope === 'video' || body?.scope === 'file'
+          ? body.scope
+          : 'all',
+        ...(Array.isArray(body?.keys) && body.keys.length
+          ? { keys: body.keys.filter(key => typeof key === 'string') }
+          : {})
       }, token, user.id)
     }
     return { job: serializeBackupJob(job) }

@@ -2,6 +2,7 @@
 import type { FileItem, FileListResponse } from '~/types/file'
 import type { LibraryStatsData } from '~/types/media'
 import { formatFileSize } from '~/composables/useFileSize'
+import SiteSyncSelectedDialog from '~/components/storage/SiteSyncSelectedDialog.vue'
 
 const props = withDefaults(defineProps<{
   /** 文件库（file）与视频库结构一致，保留参数以便复用 */
@@ -32,6 +33,7 @@ const deleteModalOpen = ref(false)
 const deleteTargetKeys = ref<string[]>([])
 const deleting = ref(false)
 const batchTagOpen = ref(false)
+const syncOpen = ref(false)
 
 const currentBackend = ref('all')
 const currentSource = ref('all')
@@ -42,6 +44,7 @@ const activeUntaggedOnly = ref(false)
 const { viewMode } = useLibraryView(props.kind)
 
 const selectedCount = computed(() => selectedKeys.value.size)
+const syncKeys = computed(() => [...selectedKeys.value])
 
 const pageText = computed(() => props.kind === 'video'
   ? {
@@ -263,6 +266,10 @@ function openBatchTags() {
   batchTagOpen.value = true
 }
 
+function openSync() {
+  syncOpen.value = true
+}
+
 function requestDelete(item: FileItem) {
   if (!isAuthenticated.value) return
   deleteTargetKeys.value = [item.key]
@@ -470,6 +477,16 @@ defineExpose({ refresh })
             :disabled="!selectedCount || loading"
             :label="t('library.batchDelete')"
             @click="requestBatchDelete"
+          />
+          <UButton
+            v-if="selectedCount > 0"
+            icon="i-lucide-cloud-upload"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            :disabled="!selectedCount || loading"
+            :label="t('storage.backup.syncSelectedAction')"
+            @click="openSync"
           />
           <div class="flex gap-0.5 rounded-lg border border-default p-0.5">
             <UButton
@@ -699,6 +716,12 @@ defineExpose({ refresh })
       :tags="tagItems"
       :selected-count="selectedCount"
       @confirm="confirmBatchTags"
+    />
+
+    <SiteSyncSelectedDialog
+      v-model:open="syncOpen"
+      :keys="syncKeys"
+      scope="file"
     />
   </div>
 </template>

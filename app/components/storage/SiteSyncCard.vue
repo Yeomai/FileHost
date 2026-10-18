@@ -28,6 +28,14 @@ const targetBaseUrl = ref('')
 const token = ref('')
 const conflictMode = ref<'skip' | 'overwrite'>('skip')
 const direction = ref<SiteSyncDirection>('push')
+const scope = ref<'all' | 'image' | 'video' | 'file'>('all')
+
+const scopeItems = computed(() => [
+  { value: 'all' as const, label: t('storage.backup.siteSyncScopeAll') },
+  { value: 'image' as const, label: t('storage.backup.siteSyncScopeImage') },
+  { value: 'video' as const, label: t('storage.backup.siteSyncScopeVideo') },
+  { value: 'file' as const, label: t('storage.backup.siteSyncScopeFile') }
+])
 
 watch(() => props.resumableJob, (job) => {
   if (!job) return
@@ -99,6 +107,7 @@ function submit(resume = false) {
     token: token.value.trim(),
     conflictMode: conflictMode.value,
     direction: direction.value,
+    scope: scope.value,
     ...(resume && props.resumableJob ? { resumeJobId: props.resumableJob.id } : {})
   })
   token.value = ''
@@ -131,6 +140,10 @@ function setConflictMode(mode: 'skip' | 'overwrite') {
 
 function setDirection(value: SiteSyncDirection) {
   direction.value = value
+}
+
+function setScope(value: 'all' | 'image' | 'video' | 'file') {
+  scope.value = value
 }
 </script>
 
@@ -245,6 +258,20 @@ function setDirection(value: SiteSyncDirection) {
           @click="setConflictMode('overwrite')"
         />
       </div>
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <span class="text-xs text-muted">{{ t('storage.backup.siteSyncContent') }}</span>
+      <UButton
+        v-for="item in scopeItems"
+        :key="item.value"
+        size="xs"
+        :variant="scope === item.value ? 'solid' : 'ghost'"
+        :color="scope === item.value ? 'primary' : 'neutral'"
+        :label="item.label"
+        :disabled="busy || disabled"
+        @click="setScope(item.value)"
+      />
     </div>
 
     <UAlert

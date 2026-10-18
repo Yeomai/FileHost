@@ -58,7 +58,13 @@ export interface SiteSyncOptions {
   targetBaseUrl: string
   conflictMode: 'skip' | 'overwrite'
   direction: SiteSyncDirection
+  /** 同步内容：全站或某一类媒体 */
+  scope?: SiteSyncScope
+  /** 指定资源（与 scope 互斥，限定同一类型） */
+  keys?: string[]
 }
+
+export type SiteSyncScope = 'all' | 'image' | 'video' | 'file'
 
 const tokens = (globalThis as typeof globalThis & {
   __pichostSiteSyncTokens?: Map<string, string>
@@ -948,7 +954,13 @@ export async function runSiteSyncJob(
     const targetUsers = new Set(inventory.users)
     const targetMedia = new Set(inventory.mediaKeys)
     const targetObjects = new Map(inventory.objects.map(item => [item.key, item.size]))
-    const rows = listAllImageIndexRows()
+    const allRows = listAllImageIndexRows()
+    const wantedKeys = new Set(options.keys ?? [])
+    const rows = allRows.filter((row) => {
+      if (wantedKeys.size) return wantedKeys.has(row.key)
+      const scope = options.scope ?? 'all'
+      return scope === 'all' || row.media_type === scope
+    })
     const ownerMap = listUserIdUsernameMap()
     const job = getBackupJob(jobId)
     const checkpoint = job?.payload ?? {}

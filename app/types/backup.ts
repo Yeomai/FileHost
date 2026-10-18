@@ -60,6 +60,10 @@ export interface SiteSyncRequest {
   token: string
   conflictMode: 'skip' | 'overwrite'
   direction: SiteSyncDirection
+  /** 同步内容：全站或某一类媒体 */
+  scope?: 'all' | 'image' | 'video' | 'file'
+  /** 指定资源（同一类型） */
+  keys?: string[]
   resumeJobId?: string
   abandonJobId?: string
 }
