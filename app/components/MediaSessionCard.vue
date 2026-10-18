@@ -267,8 +267,9 @@ const totalLabel = computed(() => {
         <UBadge
           v-if="elapsedLabel"
           color="success"
-          variant="solid"
+          variant="subtle"
           size="xs"
+          class="!text-white"
         >
           {{ t('library.transcodeElapsed') }} {{ elapsedLabel }}
         </UBadge>
