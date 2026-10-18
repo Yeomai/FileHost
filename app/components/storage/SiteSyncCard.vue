@@ -30,6 +30,48 @@ const conflictMode = ref<'skip' | 'overwrite'>('skip')
 const direction = ref<SiteSyncDirection>('push')
 const scope = ref<'all' | 'image' | 'video' | 'file'>('all')
 
+/** 目标站点地址与 Token 自动保存 24 小时 */
+const FORM_STORAGE_KEY = 'pichost.site-sync-form'
+const FORM_TTL_MS = 24 * 60 * 60 * 1000
+
+function loadSavedForm() {
+  if (!import.meta.client) return
+  try {
+    const raw = localStorage.getItem(FORM_STORAGE_KEY)
+    if (!raw) return
+    const data = JSON.parse(raw) as {
+      targetBaseUrl?: string
+      token?: string
+      savedAt?: number
+    }
+    if (!data.savedAt || Date.now() - data.savedAt > FORM_TTL_MS) {
+      localStorage.removeItem(FORM_STORAGE_KEY)
+      return
+    }
+    if (data.targetBaseUrl) targetBaseUrl.value = data.targetBaseUrl
+    if (data.token) token.value = data.token
+  } catch {
+    localStorage.removeItem(FORM_STORAGE_KEY)
+  }
+}
+
+function persistForm() {
+  if (!import.meta.client) return
+  try {
+    localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({
+      targetBaseUrl: targetBaseUrl.value,
+      token: token.value,
+      savedAt: Date.now()
+    }))
+  } catch {
+    // 存储不可用时忽略
+  }
+}
+
+watch([targetBaseUrl, token], persistForm)
+
+onMounted(loadSavedForm)
+
 const scopeItems = computed(() => [
   { value: 'all' as const, label: t('storage.backup.siteSyncScopeAll') },
   { value: 'image' as const, label: t('storage.backup.siteSyncScopeImage') },
@@ -110,7 +152,6 @@ function submit(resume = false) {
     scope: scope.value,
     ...(resume && props.resumableJob ? { resumeJobId: props.resumableJob.id } : {})
   })
-  token.value = ''
 }
 
 function startNew() {
@@ -131,7 +172,6 @@ function abandonSync() {
     direction: direction.value,
     abandonJobId: props.resumableJob.id
   })
-  token.value = ''
 }
 
 function setConflictMode(mode: 'skip' | 'overwrite') {

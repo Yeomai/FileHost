@@ -204,12 +204,17 @@ export function useBackup() {
     archiveName?: string
   }): Promise<BackupRestorePreview> {
     if (input.file) {
-      const form = new FormData()
-      form.append('file', input.file)
-      form.append('dryRun', 'true')
       const data = await $fetch<{ preview: BackupRestorePreview }>(
         '/api/admin/backup/restore',
-        { method: 'POST', credentials: 'include', body: form }
+        {
+          method: 'POST',
+          credentials: 'include',
+          body: input.file,
+          headers: {
+            'content-type': 'application/octet-stream',
+            'x-pichost-dry-run': 'true'
+          }
+        }
       )
       return data.preview
     }
@@ -235,12 +240,18 @@ export function useBackup() {
   }) {
     try {
       if (input.file) {
-        const form = new FormData()
-        form.append('file', input.file)
-        form.append('conflictMode', input.conflictMode)
         const data = await $fetch<{ job: BackupJobItem }>(
           '/api/admin/backup/restore',
-          { method: 'POST', credentials: 'include', body: form }
+          {
+            method: 'POST',
+            credentials: 'include',
+            body: input.file,
+            headers: {
+              'content-type': 'application/octet-stream',
+              'x-pichost-dry-run': 'false',
+              'x-pichost-conflict-mode': input.conflictMode
+            }
+          }
         )
         await refreshJobsFirstPage()
         startPolling()
