@@ -310,6 +310,30 @@ watch(isAuthenticated, async (authed) => {
     await loadStorage()
   }
 })
+
+const exportingCsv = ref(false)
+
+async function exportDatabaseCsv() {
+  if (exportingCsv.value) return
+  exportingCsv.value = true
+  try {
+    const blob = await $fetch<Blob>('/api/admin/export/csv', {
+      credentials: 'include',
+      responseType: 'blob'
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `pichost-db-${new Date().toISOString().slice(0, 10)}.tar.gz`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.add({ title: t('storage.exportCsvStarted'), color: 'success' })
+  } catch {
+    toast.add({ title: t('storage.exportCsvFailed'), color: 'error' })
+  } finally {
+    exportingCsv.value = false
+  }
+}
 </script>
 
 <template>
@@ -406,6 +430,31 @@ watch(isAuthenticated, async (authed) => {
           />
 
           <StorageSupportedBackends />
+
+          <section class="rounded-xl border border-default bg-elevated p-5 sm:p-6">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <h2 class="flex items-center gap-2 text-base font-semibold">
+                  <UIcon
+                    name="i-lucide-file-archive"
+                    class="size-5 text-primary"
+                  />
+                  {{ t('storage.exportTitle') }}
+                </h2>
+                <p class="mt-1 text-sm leading-relaxed text-muted">
+                  {{ t('storage.exportDescription') }}
+                </p>
+              </div>
+              <UButton
+                :label="t('storage.exportCsv')"
+                icon="i-lucide-download"
+                color="primary"
+                :loading="exportingCsv"
+                class="shrink-0"
+                @click="exportDatabaseCsv"
+              />
+            </div>
+          </section>
 
           <section class="rounded-2xl border border-error/30 bg-error/5 p-5 sm:p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
