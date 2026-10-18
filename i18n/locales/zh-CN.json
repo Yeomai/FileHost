@@ -2,7 +2,7 @@
   "app": {
     "title": "PicHost - 个人图床",
     "description": "个人自用的轻量图床系统",
-    "tagline": "个人轻量图床"
+    "tagline": "个人轻量存储"
   },
   "common": {
     "loadingSession": "正在验证登录状态…",
@@ -1201,6 +1201,7 @@
     "fileFormatBlocked": "不允许上传 {format} 文件格式"
   },
   "host": {
+    "image": "图片",
     "video": "视频",
     "file": "文件",
     "imageFull": "个人轻量图床",

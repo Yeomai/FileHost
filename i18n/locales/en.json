@@ -2,7 +2,7 @@
   "app": {
     "title": "PicHost - Image Hosting",
     "description": "A lightweight self-hosted image hosting system",
-    "tagline": "Personal lightweight image host"
+    "tagline": "Personal lightweight storage"
   },
   "common": {
     "loadingSession": "Verifying session…",
@@ -1198,6 +1198,7 @@
     "fileFormatBlocked": "{format} files are not allowed"
   },
   "host": {
+    "image": "Images",
     "video": "Video",
     "file": "File",
     "imageFull": "Personal lightweight image host",

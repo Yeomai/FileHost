@@ -28,6 +28,12 @@ const navItems = computed(() => {
 /** 三个上传入口，与顶部 Logo 并列 */
 const hostItems = computed(() => [
   {
+    label: t('host.image'),
+    to: '/',
+    icon: 'i-lucide-image',
+    title: t('host.imageFull')
+  },
+  {
     label: t('host.video'),
     to: '/videos',
     icon: 'i-lucide-film',
