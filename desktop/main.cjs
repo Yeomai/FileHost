@@ -23,8 +23,9 @@ function runtimeRoot() {
 }
 
 function dataDirectory() {
-  const base = process.env.LOCALAPPDATA || app.getPath('userData')
-  return path.join(base, 'PicHost', 'data')
+  return app.isPackaged
+    ? path.join(path.dirname(process.execPath), 'data')
+    : path.join(__dirname, '..', 'data')
 }
 
 function findFreePort() {
