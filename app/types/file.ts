@@ -14,6 +14,8 @@ export interface FileItem {
   transcodeProgress?: number
   /** 本视频使用的转码档位 */
   transcodePreset?: string
+  /** 转码开始时间（ISO） */
+  transcodeStartedAt?: string
   /** 转码失败原因 */
   transcodeError?: string
   /** HLS 播放列表地址（转码完成后有值） */

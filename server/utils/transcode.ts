@@ -705,7 +705,10 @@ let activeCount = 0
 
 async function processOne(job: QueuedTranscode): Promise<void> {
   const { videoKey } = job
-  updateImageTranscode(videoKey, { status: 'running' })
+  updateImageTranscode(videoKey, {
+    status: 'running',
+    startedAt: new Date().toISOString()
+  })
 
   try {
     const { playlistKey, totalBytes } = await transcodeVideoToHls(videoKey, job)

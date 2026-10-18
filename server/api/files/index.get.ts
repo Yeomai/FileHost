@@ -117,6 +117,9 @@ export async function handleFileList(
       transcodeProgress: stored.transcodeProgress ?? 0,
       ...(stored.transcodeError ? { transcodeError: stored.transcodeError } : {}),
       ...(stored.transcodePreset ? { transcodePreset: stored.transcodePreset } : {}),
+      ...(stored.transcodeStartedAt
+        ? { transcodeStartedAt: stored.transcodeStartedAt }
+        : {}),
       ...(stored.sourceDeleted ? { sourceDeleted: true } : {}),
       ...(stored.thumbKey
         ? { thumbUrl: resolveImageUrl(event, stored.thumbKey, stored.backendId) }

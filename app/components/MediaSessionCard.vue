@@ -98,6 +98,15 @@ const presetLabel = computed(() => {
       return null
   }
 })
+
+/** 转码已耗时（轮询每秒刷新一次） */
+const elapsedLabel = computed(() => {
+  if (!running.value || !props.item.transcodeStartedAt) return null
+  const started = new Date(props.item.transcodeStartedAt).getTime()
+  if (!Number.isFinite(started)) return null
+  const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000))
+  return `${Math.floor(seconds / 60)} min ${seconds % 60} s`
+})
 </script>
 
 <template>
@@ -238,6 +247,14 @@ const presetLabel = computed(() => {
           size="xs"
         >
           {{ presetLabel }}
+        </UBadge>
+        <UBadge
+          v-if="elapsedLabel"
+          color="primary"
+          variant="subtle"
+          size="xs"
+        >
+          {{ t('library.transcodeElapsed') }} {{ elapsedLabel }}
         </UBadge>
       </p>
     </div>

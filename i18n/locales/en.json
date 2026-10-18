@@ -1220,6 +1220,7 @@
     "statsVsLastMonth": "vs last month {value}",
     "transcodePending": "Queued",
     "transcoding": "Transcoding",
+    "transcodeElapsed": "Elapsed",
     "transcodeFailed": "Transcode failed",
     "searchPlaceholder": "Search file name",
     "searchEmpty": "Nothing matched",

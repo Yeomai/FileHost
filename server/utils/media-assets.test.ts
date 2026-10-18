@@ -19,7 +19,8 @@ const row: ImageIndexRow = {
   thumb_key: 'videos/2026/10/example.webp',
   source_deleted: 0,
   transcode_preset: 'veryfast',
-  transcode_error: null
+  transcode_error: null,
+  transcode_started_at: null
 }
 
 async function createBackend() {
