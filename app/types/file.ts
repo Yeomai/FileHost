@@ -16,6 +16,8 @@ export interface FileItem {
   transcodePreset?: string
   /** 转码开始时间（ISO） */
   transcodeStartedAt?: string
+  /** 转码总耗时（毫秒） */
+  transcodeDurationMs?: number
   /** 转码失败原因 */
   transcodeError?: string
   /** HLS 播放列表地址（转码完成后有值） */

@@ -20,7 +20,8 @@ const row: ImageIndexRow = {
   source_deleted: 0,
   transcode_preset: 'veryfast',
   transcode_error: null,
-  transcode_started_at: null
+  transcode_started_at: null,
+  transcode_duration_ms: null
 }
 
 async function createBackend() {

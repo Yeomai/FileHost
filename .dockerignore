@@ -5,6 +5,11 @@ node_modules
 .github
 data
 dist
+dist-fpk
+dist-windows
+dist-docker
+packaging
+scripts
 .env
 *.md
 ._*

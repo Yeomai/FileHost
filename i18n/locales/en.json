@@ -1221,6 +1221,7 @@
     "transcodePending": "Queued",
     "transcoding": "Transcoding",
     "transcodeElapsed": "Elapsed",
+    "transcodeTotal": "Total",
     "transcodeFailed": "Transcode failed",
     "searchPlaceholder": "Search file name",
     "searchEmpty": "Nothing matched",

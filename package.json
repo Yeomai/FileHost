@@ -46,7 +46,11 @@
     "docs:preview": "npm run docs:prepare && vitepress preview docs-site",
     "desktop:prepare": "node desktop/prepare-runtime.mjs",
     "desktop:dev": "npm run desktop:prepare && electron .",
-    "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64"
+    "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64",
+    "pack:docker": "node scripts/build-docker.mjs",
+    "pack:fpk": "node scripts/build-fpk.mjs",
+    "pack:windows": "npm run desktop:build",
+    "pack:all": "npm run pack:docker && npm run pack:fpk && npm run pack:windows"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.876.0",

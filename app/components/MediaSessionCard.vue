@@ -99,13 +99,30 @@ const presetLabel = computed(() => {
   }
 })
 
-/** 转码已耗时（轮询每秒刷新一次） */
+function formatDuration(seconds: number): string {
+  const days = Math.floor(seconds / 86_400)
+  const hours = Math.floor((seconds % 86_400) / 3_600)
+  const minutes = Math.floor((seconds % 3_600) / 60)
+  const secs = seconds % 60
+
+  if (days > 0) return `${days} d ${hours} h ${minutes} min ${secs} s`
+  if (hours > 0) return `${hours} h ${minutes} min ${secs} s`
+  if (minutes > 0) return `${minutes} min ${secs} s`
+  return `${secs} s`
+}
+
+/** 转码进行中：已耗时（轮询每秒刷新一次） */
 const elapsedLabel = computed(() => {
   if (!running.value || !props.item.transcodeStartedAt) return null
   const started = new Date(props.item.transcodeStartedAt).getTime()
   if (!Number.isFinite(started)) return null
-  const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000))
-  return `${Math.floor(seconds / 60)} min ${seconds % 60} s`
+  return formatDuration(Math.max(0, Math.floor((Date.now() - started) / 1000)))
+})
+
+/** 转码结束（成功或失败）：固定显示总耗时 */
+const totalLabel = computed(() => {
+  if (running.value || typeof props.item.transcodeDurationMs !== 'number') return null
+  return formatDuration(Math.floor(props.item.transcodeDurationMs / 1000))
 })
 </script>
 
@@ -237,7 +254,6 @@ const elapsedLabel = computed(() => {
       </div>
 
       <p
-        v-else
         class="flex flex-wrap items-center gap-1.5"
       >
         <UBadge
@@ -250,11 +266,19 @@ const elapsedLabel = computed(() => {
         </UBadge>
         <UBadge
           v-if="elapsedLabel"
-          color="primary"
-          variant="subtle"
+          color="success"
+          variant="solid"
           size="xs"
         >
           {{ t('library.transcodeElapsed') }} {{ elapsedLabel }}
+        </UBadge>
+        <UBadge
+          v-if="totalLabel"
+          color="success"
+          variant="subtle"
+          size="xs"
+        >
+          {{ t('library.transcodeTotal') }} {{ totalLabel }}
         </UBadge>
       </p>
     </div>

@@ -27,6 +27,8 @@ export interface StoredImage extends StoredImageMeta {
   transcodePreset?: string | null
   /** 转码开始时间（ISO） */
   transcodeStartedAt?: string | null
+  /** 转码总耗时（毫秒），结束后固定 */
+  transcodeDurationMs?: number | null
   /** 转码失败原因 */
   transcodeError?: string | null
   /** 视频封面缩略图 key */

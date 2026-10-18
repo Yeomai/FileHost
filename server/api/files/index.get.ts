@@ -120,6 +120,9 @@ export async function handleFileList(
       ...(stored.transcodeStartedAt
         ? { transcodeStartedAt: stored.transcodeStartedAt }
         : {}),
+      ...(typeof stored.transcodeDurationMs === 'number'
+        ? { transcodeDurationMs: stored.transcodeDurationMs }
+        : {}),
       ...(stored.sourceDeleted ? { sourceDeleted: true } : {}),
       ...(stored.thumbKey
         ? { thumbUrl: resolveImageUrl(event, stored.thumbKey, stored.backendId) }

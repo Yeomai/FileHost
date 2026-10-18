@@ -705,10 +705,13 @@ let activeCount = 0
 
 async function processOne(job: QueuedTranscode): Promise<void> {
   const { videoKey } = job
+  const startedAtIso = new Date().toISOString()
   updateImageTranscode(videoKey, {
     status: 'running',
-    startedAt: new Date().toISOString()
+    startedAt: startedAtIso
   })
+
+  const elapsedMs = () => Math.max(0, Date.now() - new Date(startedAtIso).getTime())
 
   try {
     const { playlistKey, totalBytes } = await transcodeVideoToHls(videoKey, job)
@@ -722,13 +725,19 @@ async function processOne(job: QueuedTranscode): Promise<void> {
       hlsKey: playlistKey,
       progress: 100,
       sourceDeleted: true,
-      size: totalBytes
+      size: totalBytes,
+      // 结束后清空计时起点，前端不再显示耗时
+      startedAt: '',
+      durationMs: elapsedMs()
     })
     logInfo('transcode done', { key: videoKey, hlsKey: playlistKey })
   } catch (error) {
     updateImageTranscode(videoKey, {
       status: 'failed',
-      error: summarizeTranscodeFailure(error)
+      error: summarizeTranscodeFailure(error),
+      // 失败同样停止计时
+      startedAt: '',
+      durationMs: elapsedMs()
     })
     logException('transcode failed', error, { key: videoKey })
   }

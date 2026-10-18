@@ -1224,6 +1224,7 @@
     "transcodePending": "等待转码中",
     "transcoding": "转码中",
     "transcodeElapsed": "已耗时",
+    "transcodeTotal": "总耗时",
     "transcodeFailed": "转码失败",
     "searchPlaceholder": "搜索文件名",
     "searchEmpty": "没有匹配的内容",

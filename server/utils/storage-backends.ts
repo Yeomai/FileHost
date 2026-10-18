@@ -96,6 +96,7 @@ const STORAGE_SCHEMA_SOURCE_DELETED_KEY = 'storage_schema_source_deleted'
 const STORAGE_SCHEMA_TRANSCODE_PRESET_KEY = 'storage_schema_transcode_preset'
 const STORAGE_SCHEMA_TRANSCODE_ERROR_KEY = 'storage_schema_transcode_error'
 const STORAGE_SCHEMA_TRANSCODE_STARTED_KEY = 'storage_schema_transcode_started'
+const STORAGE_SCHEMA_TRANSCODE_DURATION_KEY = 'storage_schema_transcode_duration'
 
 /** images 表新增 media_type 列（区分图床图片与文件床文件） */
 function migrateImagesMediaType(database: DatabaseSync): void {
@@ -276,6 +277,27 @@ function migrateImagesTranscodeStarted(database: DatabaseSync): void {
   `).run(STORAGE_SCHEMA_TRANSCODE_STARTED_KEY, new Date().toISOString())
 }
 
+/** images 表新增「转码总耗时」列 */
+function migrateImagesTranscodeDuration(database: DatabaseSync): void {
+  const migrated = database.prepare(`
+    SELECT value FROM settings WHERE key = ?
+  `).get(STORAGE_SCHEMA_TRANSCODE_DURATION_KEY) as { value?: string } | undefined
+
+  if (migrated?.value === '1') return
+
+  const columns = database.prepare('PRAGMA table_info(images)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'transcode_duration_ms')) {
+    database.exec('ALTER TABLE images ADD COLUMN transcode_duration_ms INTEGER')
+  }
+
+  database.prepare(`
+    INSERT OR REPLACE INTO settings (key, value, updated_at)
+    VALUES (?, '1', ?)
+  `).run(STORAGE_SCHEMA_TRANSCODE_DURATION_KEY, new Date().toISOString())
+}
+
 function migrateStorageTables(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS storage_backends (
@@ -309,6 +331,7 @@ function migrateStorageTables(database: DatabaseSync): void {
       transcode_preset TEXT,
       transcode_error TEXT,
       transcode_started_at TEXT,
+      transcode_duration_ms INTEGER,
       FOREIGN KEY (backend_id) REFERENCES storage_backends(id)
     );
     CREATE INDEX IF NOT EXISTS idx_images_uploaded_at ON images(uploaded_at DESC);
@@ -332,6 +355,7 @@ function migrateStorageTables(database: DatabaseSync): void {
   migrateImagesTranscodePreset(database)
   migrateImagesTranscodeError(database)
   migrateImagesTranscodeStarted(database)
+  migrateImagesTranscodeDuration(database)
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_images_media_type ON images(media_type);
   `)
