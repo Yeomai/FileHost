@@ -31,6 +31,7 @@
     "logs": "操作日志",
     "settings": "设置",
     "storage": "存储",
+    "users": "用户",
     "menu": "菜单",
     "language": "语言",
     "appearance": "外观",
@@ -1264,5 +1265,37 @@
   "userSettings": {
     "loadFailed": "加载设置失败",
     "saveFailed": "保存设置失败"
+  }
+  ,
+  "users": {
+    "title": "用户管理",
+    "subtitle": "查看账号并清除密码，用户下次登录时重新设置",
+    "adminOnly": "仅管理员可访问此页面",
+    "roleAdmin": "管理员",
+    "roleUser": "普通用户",
+    "clearPassword": "清除密码",
+    "resetPending": "待重置密码",
+    "passwordCleared": "已清除 {name} 的密码",
+    "clearFailed": "操作失败",
+    "loadFailed": "读取用户列表失败"
+  },
+  "reset": {
+    "title": "设置新密码",
+    "subtitle": "管理员已清除你的密码，请设置一个新密码继续使用",
+    "newPassword": "新密码（至少 6 位）",
+    "confirmPassword": "确认新密码",
+    "submit": "设置并登录",
+    "tooShort": "密码至少 6 位",
+    "mismatch": "两次输入的密码不一致",
+    "success": "密码已更新",
+    "failed": "设置失败，请确认管理员已清除你的密码"
+  },
+  "profile": {
+    "title": "个人资料",
+    "subtitle": "修改你的用户名",
+    "username": "用户名",
+    "usernameHint": "2–32 位字母、数字、下划线、点或短横线",
+    "saved": "用户名已更新",
+    "saveFailed": "保存失败"
   }
 }

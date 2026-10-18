@@ -18,6 +18,7 @@ const navItems = computed(() => {
     { label: t('nav.fileLibrary'), to: '/file-library', icon: 'i-lucide-folder-open' }
   ]
   if (isAdmin.value) {
+    items.push({ label: t('nav.users'), to: '/users', icon: 'i-lucide-users' })
     items.push({ label: t('nav.storage'), to: '/storage', icon: 'i-lucide-hard-drive' })
   }
   items.push({ label: t('nav.settings'), to: '/settings', icon: 'i-lucide-settings' })
@@ -47,6 +48,11 @@ function isHostActive(to: string) {
 }
 
 const accountMenuItems = computed<DropdownMenuItem[]>(() => [
+  {
+    label: t('profile.title'),
+    icon: 'i-lucide-user-round',
+    to: '/account/profile'
+  },
   {
     label: t('nav.changePassword'),
     icon: 'i-lucide-key-round',

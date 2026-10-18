@@ -439,6 +439,62 @@ export function updateUserPassword(userId: number, passwordHash: string): void {
   `).run(passwordHash, userId)
 }
 
+/** 懒迁移：users 表新增「需重置密码」标记 */
+function ensurePasswordResetColumn(): void {
+  const columns = getDb().prepare('PRAGMA table_info(users)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'password_reset')) {
+    getDb().exec(`
+      ALTER TABLE users ADD COLUMN password_reset INTEGER NOT NULL DEFAULT 0
+    `)
+  }
+}
+
+export interface AdminUserRow {
+  id: number
+  username: string
+  role: UserRole
+  created_at: string
+  password_reset: number
+}
+
+/** 管理员用户列表 */
+export function listAdminUsers(): AdminUserRow[] {
+  ensurePasswordResetColumn()
+  return getDb().prepare(`
+    SELECT id, username, role, created_at, password_reset
+    FROM users ORDER BY id ASC
+  `).all() as unknown as AdminUserRow[]
+}
+
+/** 清空密码并标记需要重置 */
+export function clearUserPassword(userId: number): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users SET password_hash = '', password_reset = 1 WHERE id = ?
+  `).run(userId)
+}
+
+/** 设置新密码并解除重置标记 */
+export function setUserPassword(userId: number, passwordHash: string): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users SET password_hash = ?, password_reset = 0 WHERE id = ?
+  `).run(passwordHash, userId)
+}
+
+export function updateUsername(userId: number, username: string): void {
+  getDb().prepare('UPDATE users SET username = ? WHERE id = ?').run(username, userId)
+}
+
+export function isPasswordResetRequired(userId: number): boolean {
+  ensurePasswordResetColumn()
+  const row = getDb().prepare('SELECT password_reset FROM users WHERE id = ?')
+    .get(userId) as { password_reset?: number } | undefined
+  return Number(row?.password_reset ?? 0) === 1
+}
+
 export function ensureUserApiToken(userId: number): string {
   const existing = getUserApiToken(userId)
   if (existing) return existing

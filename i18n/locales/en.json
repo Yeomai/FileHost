@@ -31,6 +31,7 @@
     "logs": "Activity log",
     "settings": "Settings",
     "storage": "Storage",
+    "users": "Users",
     "menu": "Menu",
     "language": "Language",
     "appearance": "Appearance",
@@ -1261,5 +1262,37 @@
   "userSettings": {
     "loadFailed": "Failed to load settings",
     "saveFailed": "Failed to save settings"
+  }
+  ,
+  "users": {
+    "title": "Users",
+    "subtitle": "Review accounts and clear passwords; users set a new one on next login",
+    "adminOnly": "Admins only",
+    "roleAdmin": "Admin",
+    "roleUser": "User",
+    "clearPassword": "Clear password",
+    "resetPending": "Reset pending",
+    "passwordCleared": "Cleared password for {name}",
+    "clearFailed": "Operation failed",
+    "loadFailed": "Failed to load users"
+  },
+  "reset": {
+    "title": "Set a new password",
+    "subtitle": "An admin cleared your password. Set a new one to continue.",
+    "newPassword": "New password (min 6 characters)",
+    "confirmPassword": "Confirm new password",
+    "submit": "Set and sign in",
+    "tooShort": "Password must be at least 6 characters",
+    "mismatch": "Passwords do not match",
+    "success": "Password updated",
+    "failed": "Failed — make sure an admin has cleared your password"
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Change your username",
+    "username": "Username",
+    "usernameHint": "2–32 letters, digits, underscore, dot or hyphen",
+    "saved": "Username updated",
+    "saveFailed": "Save failed"
   }
 }

@@ -143,11 +143,19 @@ export function useAuth() {
     credentials: { username: string, password: string }
       | { secret: string },
     verification: LoginVerificationPayload
-  ): Promise<{ ok: boolean, needsMigration?: boolean, error?: string }> {
+  ): Promise<{
+    ok: boolean
+    needsMigration?: boolean
+    needsPasswordReset?: boolean
+    resetUsername?: string
+    error?: string
+  }> {
     try {
       const result = await $fetch<{
         success: boolean
         needsMigration?: boolean
+        requiresPasswordReset?: boolean
+        username?: string
         user?: AuthUser
       }>('/api/auth/login', {
         method: 'POST',
@@ -159,6 +167,13 @@ export function useAuth() {
       })
       if (result.needsMigration) {
         return { ok: true, needsMigration: true }
+      }
+      if (result.requiresPasswordReset) {
+        return {
+          ok: false,
+          needsPasswordReset: true,
+          resetUsername: result.username
+        }
       }
       if (result.user) {
         user.value = result.user
