@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { loadSiteSyncForm, saveSiteSyncForm } from '~/utils/site-sync-form'
+
 const props = defineProps<{
   open: boolean
   keys: string[]
@@ -16,6 +18,19 @@ const targetBaseUrl = ref('')
 const token = ref('')
 const conflictMode = ref<'skip' | 'overwrite'>('skip')
 const busy = ref(false)
+
+watch(() => props.open, (open) => {
+  if (!open) return
+  const saved = loadSiteSyncForm()
+  if (saved) {
+    targetBaseUrl.value = saved.targetBaseUrl
+    token.value = saved.token
+  }
+}, { immediate: true })
+
+watch([targetBaseUrl, token], () => {
+  saveSiteSyncForm(targetBaseUrl.value, token.value)
+})
 
 const canSubmit = computed(() =>
   !busy.value
