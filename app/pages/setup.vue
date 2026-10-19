@@ -97,11 +97,10 @@ async function submitRestore() {
   if (!restoreFile.value || restoreLoading.value) return
   restoreLoading.value = true
   try {
-    const form = new FormData()
-    form.append('file', restoreFile.value)
     const data = await $fetch<{ job: { id: string } }>('/api/setup/restore', {
       method: 'POST',
-      body: form
+      body: restoreFile.value,
+      headers: { 'content-type': 'application/octet-stream' }
     })
     restoreJobId.value = data.job.id
     restorePollTimer = setInterval(() => {

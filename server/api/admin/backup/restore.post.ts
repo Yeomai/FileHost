@@ -1,4 +1,4 @@
-import type { H3Event } from 'h3'
+import { readFormData, type H3Event } from 'h3'
 import { requireAdminAuth } from '../../../utils/access'
 import { createApiError } from '../../../utils/api-error'
 import { serializeBackupJob } from '../../../utils/backup/api'
@@ -14,6 +14,7 @@ import {
 import { createWriteStream, promises as fs } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { readFormDataFiles } from '../../../utils/multipart-form'
 
 interface RestoreBody {
   archiveName?: string
@@ -75,21 +76,22 @@ async function resolveRestoreInput(event: H3Event, userId: number): Promise<{
   }
 
   if (contentType.includes('multipart/form-data')) {
-    const form = await readMultipartFormData(event)
-    const filePart = form?.find(part => part.name === 'file' && part.data?.length)
-    if (!filePart?.data) {
+    const form = await readFormData(event)
+    const filePart = readFormDataFiles(form, ['file'])[0]
+    if (!filePart) {
       createApiError(event, 'INVALID_REQUEST', '请上传备份文件', 400)
     }
 
-    const conflictField = form?.find(part => part.name === 'conflictMode')?.data?.toString('utf8')
-    const dryRunField = form?.find(part => part.name === 'dryRun')?.data?.toString('utf8')
+    const conflictField = form.get('conflictMode')
+    const dryRunField = form.get('dryRun')
     const dryRun = dryRunField === 'true'
+    const fileBytes = new Uint8Array(await filePart.arrayBuffer())
 
     if (dryRun) {
       const tempDir = getBackupStagingDir(`upload-preview-${Date.now()}`)
       await fs.mkdir(tempDir, { recursive: true })
       const archivePath = join(tempDir, 'package.phost.tar.gz')
-      await fs.writeFile(archivePath, filePart.data)
+      await fs.writeFile(archivePath, fileBytes)
       return {
         archivePath,
         body: {
@@ -105,7 +107,7 @@ async function resolveRestoreInput(event: H3Event, userId: number): Promise<{
     await fs.mkdir(getBackupsDir(), { recursive: true })
     const safeName = `upload-${Date.now()}${BACKUP_ARCHIVE_EXT}`
     const archivePath = join(getBackupsDir(), safeName)
-    await fs.writeFile(archivePath, filePart.data)
+    await fs.writeFile(archivePath, fileBytes)
     return {
       archivePath,
       body: {

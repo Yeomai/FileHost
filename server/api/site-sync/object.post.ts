@@ -1,4 +1,4 @@
-import { readMultipartFormData } from 'h3'
+import { getHeader, readFormData } from 'h3'
 import { requireSiteSyncAuth } from '../../utils/access'
 import { createApiError } from '../../utils/api-error'
 import { MAX_VIDEO_FILE_SIZE } from '../../utils/constants'
@@ -6,23 +6,27 @@ import { findUserByUsername } from '../../utils/db'
 import { validateStorageKey } from '../../utils/image-key'
 import { getActiveBackend } from '../../utils/storage/resolver'
 import { recordSiteSyncArtifact } from '../../utils/site-sync/artifacts'
+import { readFormDataFiles } from '../../utils/multipart-form'
 
-function field(form: Awaited<ReturnType<typeof readMultipartFormData>>, name: string): string {
-  const part = form?.find(item => item.name === name)
-  return part?.data?.length ? new TextDecoder().decode(part.data).trim() : ''
+function field(form: FormData, name: string): string {
+  const value = form.get(name)
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 export default defineEventHandler(async (event) => {
   await requireSiteSyncAuth(event)
-  const form = await readMultipartFormData(event)
-  if (!form?.length) createApiError(event, 'INVALID_REQUEST', '未收到同步数据', 400)
+  const contentLength = Number(getHeader(event, 'content-length') || 0)
+  if (contentLength > MAX_VIDEO_FILE_SIZE + 1024 * 1024) {
+    createApiError(event, 'FILE_TOO_LARGE', '同步文件超过 500 MB', 413)
+  }
+  const form = await readFormData(event)
 
   const key = field(form, 'key')
-  const file = form.find(part => part.name === 'file' && part.data?.length)
-  if (!validateStorageKey(key) || !file?.data) {
+  const file = readFormDataFiles(form, ['file'])[0]
+  if (!validateStorageKey(key) || !file) {
     createApiError(event, 'INVALID_REQUEST', '同步文件参数无效', 400)
   }
-  if (file.data.length > MAX_VIDEO_FILE_SIZE) {
+  if (file.size > MAX_VIDEO_FILE_SIZE) {
     createApiError(event, 'FILE_TOO_LARGE', '同步文件超过 500 MB', 413)
   }
 
@@ -51,11 +55,11 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await backend.put(key, new Uint8Array(file.data), {
-    originalName: field(form, 'originalName') || file.filename || key.split('/').pop() || 'file',
+  await backend.put(key, new Uint8Array(await file.arrayBuffer()), {
+    originalName: field(form, 'originalName') || file.name || key.split('/').pop() || 'file',
     uploadedAt: field(form, 'uploadedAt') || new Date().toISOString(),
     contentType: file.type || field(form, 'contentType') || 'application/octet-stream',
-    size: file.data.length,
+    size: file.size,
     userId: owner?.id ?? null,
     mediaType: key.startsWith('videos/')
       ? 'video'
