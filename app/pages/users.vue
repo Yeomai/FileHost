@@ -7,7 +7,15 @@ interface AdminUser {
   password_reset: number
 }
 
-const { isChecking, isAuthenticated, isAdmin, checkSession, fetchStatus, handleAuthError } = useAuth()
+const {
+  isChecking,
+  isAuthenticated,
+  isAdmin,
+  checkSession,
+  fetchStatus,
+  handleAuthError,
+  getFetchErrorMessage
+} = useAuth()
 const toast = useToast()
 const { t } = useI18n()
 
@@ -42,7 +50,10 @@ async function clearPassword(user: AdminUser) {
     await loadUsers()
   } catch (error: unknown) {
     handleAuthError(error)
-    toast.add({ title: t('users.clearFailed'), color: 'error' })
+    toast.add({
+      title: getFetchErrorMessage(error, t('users.clearFailed')),
+      color: 'error'
+    })
   }
 }
 

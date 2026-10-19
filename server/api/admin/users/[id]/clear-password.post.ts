@@ -11,6 +11,9 @@ export default defineEventHandler(async (event) => {
   if (!target) {
     createApiError(event, 'INVALID_REQUEST', '用户不存在', 404)
   }
+  if (target.role === 'admin') {
+    createApiError(event, 'FORBIDDEN', '不允许清除管理员账号', 403)
+  }
   if (target.id === operator.id) {
     createApiError(event, 'INVALID_REQUEST', '不能清除自己的密码', 400)
   }
