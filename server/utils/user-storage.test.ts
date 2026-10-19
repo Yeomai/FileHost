@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest'
 import {
   getDb,
   insertActivityLog,
-  insertUser
+  insertUser,
+  listAdminUsersWithUsage
 } from './db'
 import {
   listImageIndexRowsForUser,
@@ -16,7 +17,7 @@ import { ensureDefaultBackends } from './storage-backends'
 import { getActiveBackend } from './storage/resolver'
 import { putImage } from './storage'
 import { createTag } from './tags'
-import { clearUserStorage } from './user-storage'
+import { clearUserStorage, deleteUserCurrentData } from './user-storage'
 import {
   createBackupJob,
   getBackupJob,
@@ -141,5 +142,82 @@ describe('clearUserStorage', () => {
     expect(getBackupJob(jobB.id, userB)).not.toBeNull()
     await expect(fs.access(archiveA)).rejects.toThrow()
     await expect(fs.access(archiveB)).resolves.toBeUndefined()
+  })
+
+  it('deletes current user data without deleting backups or admin audit data', async () => {
+    ensureDefaultBackends()
+    const now = new Date().toISOString()
+    const admin = insertUser({
+      username: 'delete-admin',
+      passwordHash: 'admin-hash',
+      role: 'admin',
+      createdAt: now
+    })
+    const user = insertUser({
+      username: 'delete-user',
+      passwordHash: 'user-hash',
+      role: 'user',
+      createdAt: now
+    })
+    const key = 'images/2026/10/delete-user.webp'
+    const target = await getActiveBackend()
+
+    await putImage(key, new Uint8Array([1]), {
+      originalName: 'delete-user.webp',
+      uploadedAt: now,
+      contentType: 'image/webp',
+      size: 1,
+      userId: user,
+      mediaType: 'image'
+    })
+    const tag = createTag(user, 'delete tag')
+    getDb().prepare('INSERT INTO image_tags (image_key, tag_id) VALUES (?, ?)')
+      .run(key, tag.id)
+    getDb().prepare(`
+      INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('delete-session', user, 'hash', now, now)
+    insertActivityLog({
+      action: 'upload',
+      key,
+      originalName: 'delete-user.webp',
+      size: 1,
+      contentType: 'image/webp',
+      source: 'web',
+      userId: user
+    })
+    insertActivityLog({
+      action: 'settings',
+      key: `users/${user}/clear-password`,
+      originalName: 'delete-user',
+      size: 0,
+      contentType: '',
+      source: 'admin',
+      userId: admin
+    })
+    const job = createBackupJob({ type: 'full_export', userId: user })
+    markJobDone(job.id, {})
+
+    const listed = listAdminUsersWithUsage().find(item => item.id === user)
+    expect(listed?.usage.imageBytes).toBe(1)
+
+    const result = await deleteUserCurrentData(user)
+
+    expect(result.failed).toEqual([])
+    expect(result.deletedMedia).toBe(1)
+    expect(result.deletedTags).toBe(1)
+    expect(await target.head(key)).toBeNull()
+    expect(getDb().prepare('SELECT 1 FROM users WHERE id = ?').get(user)).toBeUndefined()
+    expect(getDb().prepare('SELECT 1 FROM sessions WHERE user_id = ?').get(user)).toBeUndefined()
+    expect(getDb().prepare('SELECT 1 FROM images WHERE user_id = ?').get(user)).toBeUndefined()
+    expect(getDb().prepare('SELECT 1 FROM tags WHERE user_id = ?').get(user)).toBeUndefined()
+    expect(getDb().prepare('SELECT 1 FROM activity_logs WHERE user_id = ?').get(user)).toBeUndefined()
+    expect(getDb().prepare(`
+      SELECT original_name FROM activity_logs
+      WHERE user_id = ? AND key = ?
+    `).get(admin, `users/${user}/clear-password`)).toEqual({ original_name: '已注销用户' })
+    expect(getDb().prepare('SELECT 1 FROM backup_jobs WHERE id = ?').get(job.id)).toBeDefined()
+
+    await expect(deleteUserCurrentData(admin)).rejects.toThrow('ADMIN_USER_DELETE_FORBIDDEN')
   })
 })

@@ -459,6 +459,12 @@ export interface AdminUserRow {
   password_reset: number
 }
 
+export interface AdminUserUsage {
+  imageBytes: number
+  videoBytes: number
+  fileBytes: number
+}
+
 /** 管理员用户列表 */
 export function listAdminUsers(): AdminUserRow[] {
   ensurePasswordResetColumn()
@@ -466,6 +472,42 @@ export function listAdminUsers(): AdminUserRow[] {
     SELECT id, username, role, created_at, password_reset
     FROM users ORDER BY id ASC
   `).all() as unknown as AdminUserRow[]
+}
+
+/** 管理员用户列表，附带图片、视频、文件占用 */
+export function listAdminUsersWithUsage(): Array<AdminUserRow & { usage: AdminUserUsage }> {
+  const usage = new Map<number, AdminUserUsage>()
+  const rows = getDb().prepare(`
+    SELECT user_id, media_type, COALESCE(SUM(size), 0) AS bytes
+    FROM images
+    WHERE user_id IS NOT NULL
+    GROUP BY user_id, media_type
+  `).all() as Array<{ user_id: number, media_type: string, bytes: number }>
+
+  for (const row of rows) {
+    const entry = usage.get(row.user_id) ?? {
+      imageBytes: 0,
+      videoBytes: 0,
+      fileBytes: 0
+    }
+    if (row.media_type === 'video') {
+      entry.videoBytes = Number(row.bytes)
+    } else if (row.media_type === 'file') {
+      entry.fileBytes = Number(row.bytes)
+    } else {
+      entry.imageBytes = Number(row.bytes)
+    }
+    usage.set(row.user_id, entry)
+  }
+
+  return listAdminUsers().map(user => ({
+    ...user,
+    usage: usage.get(user.id) ?? {
+      imageBytes: 0,
+      videoBytes: 0,
+      fileBytes: 0
+    }
+  }))
 }
 
 /** 清空密码并标记需要重置 */

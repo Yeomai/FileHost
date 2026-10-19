@@ -1,7 +1,7 @@
 import { requireAdminAuth } from '../../../utils/access'
-import { listAdminUsers } from '../../../utils/db'
+import { listAdminUsersWithUsage } from '../../../utils/db'
 
 export default defineEventHandler(async (event) => {
   await requireAdminAuth(event)
-  return { users: listAdminUsers() }
+  return { users: listAdminUsersWithUsage() }
 })

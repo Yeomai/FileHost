@@ -34,6 +34,11 @@ export interface ClearUserStorageResult {
   failed: Array<{ key: string, message: string }>
 }
 
+export interface ClearUserStorageOptions {
+  /** 用户注销时保留备份任务，避免影响管理员的备份数据 */
+  deleteBackupJobs?: boolean
+}
+
 async function deleteObject(
   backend: StorageBackend,
   key: string
@@ -73,7 +78,11 @@ async function removeBackupJobArtifacts(job: BackupJob): Promise<void> {
   }
 }
 
-export async function clearUserStorage(userId: number): Promise<ClearUserStorageResult> {
+export async function clearUserStorage(
+  userId: number,
+  options: ClearUserStorageOptions = {}
+): Promise<ClearUserStorageResult> {
+  const deleteBackupJobs = options.deleteBackupJobs !== false
   if (activeUsers.has(userId)) {
     throw new Error('USER_STORAGE_CLEAR_IN_PROGRESS')
   }
@@ -94,7 +103,7 @@ export async function clearUserStorage(userId: number): Promise<ClearUserStorage
       throw new Error('USER_STORAGE_CLEAR_ACTIVE_JOB')
     }
 
-    const backupJobs = listAllBackupJobsForUser(userId)
+    const backupJobs = deleteBackupJobs ? listAllBackupJobsForUser(userId) : []
     const rows = listImageIndexRowsForUser(userId)
     for (const row of rows) {
       try {
@@ -158,7 +167,7 @@ export async function clearUserStorage(userId: number): Promise<ClearUserStorage
       }
     }
 
-    if (!result.failed.length) {
+    if (!result.failed.length && deleteBackupJobs) {
       for (const job of backupJobs) {
         await removeBackupJobArtifacts(job)
       }
@@ -170,4 +179,39 @@ export async function clearUserStorage(userId: number): Promise<ClearUserStorage
   } finally {
     activeUsers.delete(userId)
   }
+}
+
+/** 管理员注销用户：清理当前有效数据，但保留备份与管理员审计数据 */
+export async function deleteUserCurrentData(
+  userId: number
+): Promise<ClearUserStorageResult> {
+  const db = getDb()
+  const target = db.prepare('SELECT id, username, role FROM users WHERE id = ?')
+    .get(userId) as { id: number, username: string, role: string } | undefined
+
+  if (!target) throw new Error('USER_NOT_FOUND')
+  if (target.role === 'admin') throw new Error('ADMIN_USER_DELETE_FORBIDDEN')
+
+  // 先终止会话，避免清理过程中继续上传；失败时用户仍可重新登录。
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+
+  const result = await clearUserStorage(userId, { deleteBackupJobs: false })
+  if (result.failed.length) return result
+
+  db.exec('BEGIN')
+  try {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId)
+    db.prepare(`
+      UPDATE activity_logs
+      SET original_name = '已注销用户'
+      WHERE key LIKE ?
+    `).run(`users/${userId}/%`)
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+
+  return result
 }
