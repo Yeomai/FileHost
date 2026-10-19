@@ -1,4 +1,4 @@
-import { readMultipartFormData } from 'h3'
+import { readFormData } from 'h3'
 import type { FileItem, FileUploadResponse } from '~/types/file'
 import type { UploadErrorItem } from '~/types/image'
 import {
@@ -11,7 +11,10 @@ import { createApiError } from '../../utils/api-error'
 import { checkUploadRateLimit } from '../../utils/rate-limit'
 import { processSingleFileUpload } from '../../utils/file-bed'
 import { getFileBedAccessMode } from '../../utils/env'
-import { readMultipartFormFieldValues } from '../../utils/multipart-form'
+import {
+  readFormDataFieldValues,
+  readFormDataFiles
+} from '../../utils/multipart-form'
 import {
   parseTagNamesParam,
   resolveUploadTagIds
@@ -20,20 +23,18 @@ import {
 export default defineEventHandler(async (event) => {
   await requireUploadAuth(event)
 
-  const formData = await readMultipartFormData(event)
-  if (!formData?.length) {
+  const formData = await readFormData(event)
+  if (!formData) {
     createApiError(event, 'INVALID_REQUEST', '未收到上传文件', 400)
   }
 
-  const tokenField = formData.find(part => part.name === 'token')
-  const formToken = tokenField?.data?.length
-    ? new TextDecoder().decode(tokenField.data).trim()
-    : ''
+  const tokenField = formData.get('token')
+  const formToken = typeof tokenField === 'string' ? tokenField.trim() : ''
   checkUploadRateLimit(event, formToken)
 
   const source = verifyApiUploadToken(event) ? 'api' : 'web'
   const uploadUserId = await getUploadUserId(event, formToken)
-  const tagNamesRaw = readMultipartFormFieldValues(formData, 'tagNames')
+  const tagNamesRaw = readFormDataFieldValues(formData, 'tagNames')
   const uploadTagNames = parseTagNamesParam(
     tagNamesRaw.length === 1 ? tagNamesRaw[0] : tagNamesRaw
   )
@@ -43,8 +44,9 @@ export default defineEventHandler(async (event) => {
   }
   const uploadTagIds = resolvedTags.tagIds
 
-  const fileParts = formData.filter(
-    part => (part.name === 'file' || part.name === 'files') && part.data?.length
+  const fileParts = readFormDataFiles(
+    formData,
+    ['file', 'files']
   )
   if (!fileParts.length) {
     createApiError(event, 'INVALID_REQUEST', '未收到上传文件', 400)
@@ -64,8 +66,8 @@ export default defineEventHandler(async (event) => {
 
   for (const part of fileParts) {
     const result = await processSingleFileUpload(event, {
-      bytes: new Uint8Array(part.data),
-      filename: part.filename,
+      bytes: new Uint8Array(await part.arrayBuffer()),
+      filename: part.name,
       contentType: part.type,
       source,
       userId: uploadUserId,

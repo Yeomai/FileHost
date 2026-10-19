@@ -3,6 +3,7 @@ import type { FileItem, FileListResponse, FileUploadResponse } from '~/types/fil
 import type { CopyFormat, UploadMediaKind } from './useUploadPreferences'
 import { isUnauthorizedError } from './useAuth'
 import { normalizeUploadTagNames } from './useUploadPreferences'
+import { uploadFormDataWithProgress } from '~/utils/upload-progress'
 
 const MAX_FILES = 10
 
@@ -255,13 +256,19 @@ export function useMediaUpload(kind: UploadMediaKind) {
       progressItems.value = progressItems.value.map(item => ({
         ...item,
         status: 'uploading',
-        progress: 50
+        progress: 0
       }))
 
-      const response = await $fetch<FileUploadResponse>(endpoint, {
-        method: 'POST',
-        body: formData
-      })
+      const response = await uploadFormDataWithProgress<FileUploadResponse>(
+        endpoint,
+        formData,
+        (percent) => {
+          progressItems.value = progressItems.value.map(item => ({
+            ...item,
+            progress: Math.min(99, percent)
+          }))
+        }
+      )
 
       lastResult.value = response
       accessMode.value = response.accessMode

@@ -5,6 +5,7 @@ import type {
 import { isUnauthorizedError } from './useAuth'
 import { prepareFilesForUpload } from './useClipboardImage'
 import { normalizeUploadTagNames } from './useUploadPreferences'
+import { uploadFormDataWithProgress } from '~/utils/upload-progress'
 
 const MAX_FILES = 10
 
@@ -66,10 +67,10 @@ export function useImageUpload() {
         return
       }
 
-      progressItems.value = prepared.map((file, index) => ({
+      progressItems.value = prepared.map(file => ({
         name: file.name,
         status: 'uploading',
-        progress: Math.round(((index + 1) / prepared.length) * 50)
+        progress: 0
       }))
 
       const formData = new FormData()
@@ -82,10 +83,16 @@ export function useImageUpload() {
         formData.append('tagNames', tagNames)
       }
 
-      const response = await $fetch<UploadResponse>('/api/images/upload', {
-        method: 'POST',
-        body: formData
-      })
+      const response = await uploadFormDataWithProgress<UploadResponse>(
+        '/api/images/upload',
+        formData,
+        (percent) => {
+          progressItems.value = progressItems.value.map(item => ({
+            ...item,
+            progress: Math.min(99, percent)
+          }))
+        }
+      )
 
       lastUploadResult.value = response
 
