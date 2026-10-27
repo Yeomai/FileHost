@@ -57,6 +57,11 @@ export default defineEventHandler(async (event) => {
 
   const user = findUserByUsername(username)
 
+  if (user?.disabled_at) {
+    logWarn('login failed: user disabled', { ip, username })
+    createApiError(event, 'FORBIDDEN', '该账号已被禁用', 403)
+  }
+
   // 管理员已清除密码：下次登录时直接进入设置新密码流程
   if (user && isPasswordResetRequired(user.id)) {
     return { success: false, requiresPasswordReset: true, username: user.username }

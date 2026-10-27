@@ -12,7 +12,7 @@ function matchesUserFilter(
 }
 
 describe('image user filter', () => {
-  it('admin sees all images including system uploads', () => {
+  it('explicit global filter includes all images', () => {
     expect(matchesUserFilter({ userId: null } as StoredImageMeta, 'admin')).toBe(true)
     expect(matchesUserFilter({ userId: 2 } as StoredImageMeta, 'admin')).toBe(true)
   })

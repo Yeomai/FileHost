@@ -211,12 +211,12 @@ export async function requireApiOrAdminAuth(event: H3Event): Promise<void> {
   }
 }
 
-/** 列表/搜索/删除时按用户过滤；全局 Token 视为管理员，用户 Token 仅见自己的 */
+/** 列表/搜索/删除时按用户过滤；管理员和普通用户都只能访问自己的媒体 */
 export async function getImageUserFilter(
   event: H3Event
 ): Promise<number | 'admin'> {
   if (devBypass(event)) {
-    return 'admin'
+    return getPrimaryAdminUserId() ?? 'admin'
   }
 
   const userIdFromToken = resolveUserIdFromApiToken(event)
@@ -225,13 +225,10 @@ export async function getImageUserFilter(
   }
 
   if (verifyGlobalApiUploadToken(event)) {
-    return 'admin'
+    return getPrimaryAdminUserId() ?? 'admin'
   }
 
   const user = await requireUserAuth(event)
-  if (user.role === 'admin') {
-    return 'admin'
-  }
   return user.id
 }
 
@@ -253,14 +250,14 @@ export async function assertImageOwnership(
   }
 
   if (verifyGlobalApiUploadToken(event)) {
+    const ownerId = userId ?? null
+    if (ownerId === null || ownerId !== getPrimaryAdminUserId()) {
+      createApiError(event, 'FORBIDDEN', '无权操作此图片', 403)
+    }
     return
   }
 
   const user = await requireUserAuth(event)
-  if (user.role === 'admin') {
-    return
-  }
-
   const ownerId = userId ?? null
   if (ownerId === null || ownerId !== user.id) {
     createApiError(event, 'FORBIDDEN', '无权操作此图片', 403)

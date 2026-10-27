@@ -8,13 +8,15 @@ function canOperateImage(
   actor: { type: 'user', id: number, role: 'user' | 'admin' }
     | { type: 'user-token', id: number }
     | { type: 'global-token' },
-  ownerId: number | null
+  ownerId: number | null,
+  primaryAdminId = 1
 ): boolean {
-  if (actor.type === 'global-token') return true
+  if (actor.type === 'global-token') {
+    return ownerId !== null && ownerId === primaryAdminId
+  }
   if (actor.type === 'user-token') {
     return ownerId === actor.id
   }
-  if (actor.role === 'admin') return true
   return ownerId !== null && ownerId === actor.id
 }
 
@@ -26,10 +28,11 @@ describe('image ownership rules', () => {
     expect(canOperateImage(user1, null)).toBe(false)
   })
 
-  it('admin can operate any image', () => {
+  it('admin can only operate own images', () => {
     const admin = { type: 'user' as const, id: 1, role: 'admin' as const }
-    expect(canOperateImage(admin, 2)).toBe(true)
-    expect(canOperateImage(admin, null)).toBe(true)
+    expect(canOperateImage(admin, 1)).toBe(true)
+    expect(canOperateImage(admin, 2)).toBe(false)
+    expect(canOperateImage(admin, null)).toBe(false)
   })
 
   it('user API token is scoped to owner', () => {
@@ -39,10 +42,11 @@ describe('image ownership rules', () => {
     expect(canOperateImage(token, null)).toBe(false)
   })
 
-  it('global API token can operate any image', () => {
+  it('global API token is scoped to the primary admin owner', () => {
     const token = { type: 'global-token' as const }
     expect(canOperateImage(token, 1)).toBe(true)
-    expect(canOperateImage(token, null)).toBe(true)
+    expect(canOperateImage(token, 2)).toBe(false)
+    expect(canOperateImage(token, null)).toBe(false)
   })
 })
 

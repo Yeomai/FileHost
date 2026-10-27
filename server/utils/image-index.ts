@@ -602,11 +602,16 @@ export function getMediaStats(
 
   // 来源分布来自上传日志，按目录前缀区分类型
   const prefix = mediaType === 'video' ? 'videos/' : mediaType === 'file' ? 'files/' : 'images/'
+  const sourceParams: Array<string | number> = [`${prefix}%`]
+  const sourceUserSql = userFilter === undefined || userFilter === 'admin'
+    ? ''
+    : ' AND user_id = ?'
+  if (sourceUserSql) sourceParams.push(userFilter as number)
   const sourceRows = getDb().prepare(`
     SELECT source, COUNT(*) AS count FROM activity_logs
-    WHERE action = 'upload' AND key LIKE ?
+    WHERE action = 'upload' AND key LIKE ?${sourceUserSql}
     GROUP BY source
-  `).all(`${prefix}%`) as Array<{ source: string, count: number }>
+  `).all(...sourceParams) as Array<{ source: string, count: number }>
 
   const bySource = { web: 0, api: 0 }
   for (const row of sourceRows) {

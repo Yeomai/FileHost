@@ -191,6 +191,9 @@ function migrateSchema(database: DatabaseSync): void {
       WHERE auto_delete_days > 0 AND auto_delete_enabled_at IS NULL
     `)
   }
+  if (!userColumns.some(column => column.name === 'disabled_at')) {
+    database.exec('ALTER TABLE users ADD COLUMN disabled_at TEXT')
+  }
 
   const daysRow = database.prepare(`
     SELECT value FROM settings WHERE key = 'auto_delete_days'
@@ -263,7 +266,7 @@ function migrateSchema(database: DatabaseSync): void {
   `)
 }
 
-const USER_COLUMNS = 'id, username, password_hash, role, created_at, api_token, auto_delete_days, auto_delete_enabled_at'
+const USER_COLUMNS = 'id, username, password_hash, role, created_at, api_token, auto_delete_days, auto_delete_enabled_at, disabled_at'
 
 export type UserRole = 'admin' | 'user'
 
@@ -276,6 +279,7 @@ export interface UserRow {
   api_token: string | null
   auto_delete_days: number
   auto_delete_enabled_at: string | null
+  disabled_at: string | null
 }
 
 export interface AutoDeletePolicy {
@@ -330,7 +334,7 @@ export function findUserByApiToken(token: string): UserRow | null {
   const row = getDb().prepare(`
     SELECT ${USER_COLUMNS}
     FROM users
-    WHERE api_token = ?
+    WHERE api_token = ? AND disabled_at IS NULL
   `).get(token) as UserRow | undefined
   return row ?? null
 }
@@ -457,6 +461,7 @@ export interface AdminUserRow {
   role: UserRole
   created_at: string
   password_reset: number
+  disabled_at: string | null
 }
 
 export interface AdminUserUsage {
@@ -469,7 +474,7 @@ export interface AdminUserUsage {
 export function listAdminUsers(): AdminUserRow[] {
   ensurePasswordResetColumn()
   return getDb().prepare(`
-    SELECT id, username, role, created_at, password_reset
+    SELECT id, username, role, created_at, password_reset, disabled_at
     FROM users ORDER BY id ASC
   `).all() as unknown as AdminUserRow[]
 }
@@ -524,6 +529,16 @@ export function setUserPassword(userId: number, passwordHash: string): void {
   getDb().prepare(`
     UPDATE users SET password_hash = ?, password_reset = 0 WHERE id = ?
   `).run(passwordHash, userId)
+}
+
+export function setUserDisabled(userId: number, disabled: boolean): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users
+    SET disabled_at = ?
+    WHERE id = ?
+  `).run(disabled ? new Date().toISOString() : null, userId)
+  if (disabled) deleteSessionsForUser(userId)
 }
 
 export function updateUsername(userId: number, username: string): void {

@@ -7,6 +7,7 @@ interface AdminUser {
   role: 'admin' | 'user'
   created_at: string
   password_reset: number
+  disabled_at: string | null
   usage?: {
     imageBytes: number
     videoBytes: number
@@ -31,6 +32,7 @@ const loading = ref(false)
 const deleteTarget = ref<AdminUser | null>(null)
 const deleteConfirm = ref('')
 const deleting = ref(false)
+const statusBusyId = ref<number | null>(null)
 
 const canDelete = computed(() =>
   Boolean(
@@ -73,6 +75,34 @@ async function clearPassword(user: AdminUser) {
       title: getFetchErrorMessage(error, t('users.clearFailed')),
       color: 'error'
     })
+  }
+}
+
+async function toggleDisabled(user: AdminUser) {
+  if (user.role === 'admin' || statusBusyId.value !== null) return
+  const disabled = !user.disabled_at
+  statusBusyId.value = user.id
+  try {
+    await $fetch(`/api/admin/users/${user.id}/status`, {
+      method: 'POST',
+      credentials: 'include',
+      body: { disabled }
+    })
+    toast.add({
+      title: t(disabled ? 'users.disableSuccess' : 'users.enableSuccess', {
+        name: user.username
+      }),
+      color: 'success'
+    })
+    await loadUsers()
+  } catch (error: unknown) {
+    handleAuthError(error)
+    toast.add({
+      title: getFetchErrorMessage(error, t('users.statusFailed')),
+      color: 'error'
+    })
+  } finally {
+    statusBusyId.value = null
   }
 }
 
@@ -227,6 +257,14 @@ onMounted(async () => {
             class="flex items-center gap-2"
           >
             <UBadge
+              v-if="user.disabled_at"
+              color="error"
+              variant="subtle"
+              size="sm"
+            >
+              {{ t('users.disabled') }}
+            </UBadge>
+            <UBadge
               v-if="user.password_reset === 1"
               color="warning"
               variant="subtle"
@@ -234,6 +272,15 @@ onMounted(async () => {
             >
               {{ t('users.resetPending') }}
             </UBadge>
+            <UButton
+              variant="outline"
+              :color="user.disabled_at ? 'primary' : 'warning'"
+              size="sm"
+              :label="user.disabled_at ? t('users.enable') : t('users.disable')"
+              :loading="statusBusyId === user.id"
+              :disabled="statusBusyId !== null && statusBusyId !== user.id"
+              @click="toggleDisabled(user)"
+            />
             <UButton
               v-if="user.password_reset !== 1"
               variant="outline"
