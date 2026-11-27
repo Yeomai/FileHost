@@ -1,0 +1,67 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm 11
+        shell: pwsh
+        run: |
+          npm install -g npm@11.12.1
+          npm --version
+
+      - name: Install FFmpeg
+        shell: pwsh
+        run: |
+          choco install ffmpeg -y --no-progress
+
+          $chocoRoot = if ($env:ChocolateyInstall) {
+            $env:ChocolateyInstall
+          } else {
+            'C:\ProgramData\chocolatey'
+          }
+          $ffmpeg = Get-ChildItem (Join-Path $chocoRoot 'lib\ffmpeg') -Recurse -Filter ffmpeg.exe -File |
+            Where-Object { Test-Path (Join-Path $_.DirectoryName 'ffprobe.exe') } |
+            Select-Object -First 1
+
+          if (-not $ffmpeg) {
+            throw '未找到有效版本的 ffmpeg.exe 和 ffprobe.exe'
+          }
+
+          "FFMPEG_DIR=$($ffmpeg.DirectoryName)" >> $env:GITHUB_ENV
+          & (Join-Path $ffmpeg.DirectoryName 'ffmpeg.exe') -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        run: npm run desktop:build
+
+      - name: List installer
+        shell: pwsh
+        run: Get-ChildItem dist-windows\release -Filter *.exe | Format-Table Name, Length
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PicHost-Windows
+          path: dist-windows/release/*.exe
+          if-no-files-found: error
+          retention-days: 14
