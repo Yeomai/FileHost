@@ -1,9 +1,11 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import { join, relative } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { DatabaseSync } from 'node:sqlite'
 import * as tar from 'tar'
 import { getImageIndexRow } from '../image-index'
 import { getActiveBackend } from '../storage/resolver'
+import { contentTypeFromKey } from '../content-type'
 import { replaceDatabaseFromSnapshot } from './db-snapshot'
 import { markJobDone, markJobFailed, restoreBackupJobsAfterReplace, snapshotBackupJobs, updateBackupJob } from './jobs'
 import {
@@ -47,31 +49,53 @@ async function readManifest(stagingRoot: string): Promise<BackupManifest> {
   return manifest
 }
 
+interface RestoreImageRow {
+  key: string
+  thumb_key: string | null
+  hls_key: string | null
+  source_deleted: number
+}
+
+function readRestoreImageRows(stagingRoot: string): RestoreImageRow[] {
+  const db = new DatabaseSync(
+    join(stagingRoot, 'database', 'pichost.sqlite'),
+    { readOnly: true }
+  )
+  try {
+    return db.prepare(`
+      SELECT key, thumb_key, hls_key, source_deleted
+      FROM images
+    `).all() as unknown as RestoreImageRow[]
+  } finally {
+    db.close()
+  }
+}
+
 export async function previewFullRestore(archivePath: string): Promise<BackupRestorePreview> {
   const stagingRoot = getBackupStagingDir(`preview-${Date.now()}`)
   try {
     await extractArchive(archivePath, stagingRoot)
     const manifest = await readManifest(stagingRoot)
-    const blobsRoot = join(stagingRoot, 'blobs')
-    let blobFiles: string[] = []
-    try {
-      blobFiles = await walkFiles(blobsRoot)
-    } catch {
-      blobFiles = []
-    }
-
+    const backend = await getActiveBackend()
+    const imageRows = readRestoreImageRows(stagingRoot)
     let conflictingImages = 0
-    for (const file of blobFiles) {
-      const rel = relative(blobsRoot, file).replace(/\\/g, '/')
-      if (getImageIndexRow(rel)) {
+    for (const row of imageRows) {
+      const keys = [
+        ...(Number(row.source_deleted) === 1 ? [] : [row.key]),
+        ...(row.thumb_key ? [row.thumb_key] : []),
+        ...(row.hls_key ? [row.hls_key] : [])
+      ]
+      for (const key of keys) {
+        if (!await backend.head(key)) continue
         conflictingImages += 1
+        break
       }
     }
 
     return {
-      imageCount: manifest.imageCount,
+      imageCount: imageRows.length,
       imageBytes: manifest.imageBytes,
-      newImages: Math.max(0, blobFiles.length - conflictingImages),
+      newImages: imageRows.length - conflictingImages,
       conflictingImages,
       formatVersion: manifest.formatVersion,
       appVersion: manifest.appVersion,
@@ -104,7 +128,7 @@ export async function runFullRestoreJob(
     restoreBackupJobsAfterReplace(preservedJobs)
     updateBackupJob(jobId, {
       status: 'running',
-      message: '正在恢复图片…',
+      message: '正在恢复文件…',
       progress: 0,
       total: 0
     })
@@ -112,7 +136,7 @@ export async function runFullRestoreJob(
     const blobsRoot = join(stagingRoot, 'blobs')
     const blobFiles = await walkFiles(blobsRoot)
     const total = blobFiles.length + 1
-    updateBackupJob(jobId, { total, progress: 1, message: '正在恢复图片…' })
+    updateBackupJob(jobId, { total, progress: 1, message: '正在恢复文件…' })
 
     const backend = await getActiveBackend()
     let processed = 1
@@ -120,8 +144,9 @@ export async function runFullRestoreJob(
     for (const file of blobFiles) {
       const key = relative(blobsRoot, file).replace(/\\/g, '/')
       const indexed = getImageIndexRow(key)
+      const exists = Boolean(await backend.head(key))
 
-      if (!indexed && options.conflictMode === 'skip') {
+      if (exists && options.conflictMode === 'skip') {
         processed += 1
         continue
       }
@@ -138,19 +163,19 @@ export async function runFullRestoreJob(
         : {
             originalName: key.split('/').pop() ?? key,
             uploadedAt: new Date().toISOString(),
-            contentType: 'application/octet-stream',
+            contentType: contentTypeFromKey(key),
             size: bytes.length,
             userId: null
           }
 
-      if (options.conflictMode === 'overwrite' || !indexed) {
+      if (options.conflictMode === 'overwrite' || !exists) {
         await backend.put(key, bytes, meta)
       }
 
       processed += 1
       updateBackupJob(jobId, {
         progress: processed,
-        message: `正在恢复图片 ${processed}/${total}…`
+        message: `正在恢复文件 ${processed}/${total}…`
       })
     }
 
@@ -159,7 +184,7 @@ export async function runFullRestoreJob(
     markJobDone(jobId, {
       message: '恢复完成，请重新登录并在存储页检查对象存储密钥',
       payload: {
-        restoredImages: blobFiles.length,
+        restoredFiles: blobFiles.length,
         manifest
       }
     })

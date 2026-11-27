@@ -1,4 +1,4 @@
-import { readMultipartFormData } from 'h3'
+import { readFormData } from 'h3'
 import type { UploadResponse, UploadErrorItem, ImageItem } from '~/types/image'
 import { requireUploadAuth, verifyApiUploadToken, getUploadUserId } from '../../utils/access'
 import { MAX_FILES_PER_UPLOAD } from '../../utils/constants'
@@ -12,7 +12,10 @@ import {
 } from '../../utils/process-image-upload'
 import { createApiError } from '../../utils/api-error'
 import { checkUploadRateLimit } from '../../utils/rate-limit'
-import { readMultipartFormFieldValues } from '../../utils/multipart-form'
+import {
+  readFormDataFieldValues,
+  readFormDataFiles
+} from '../../utils/multipart-form'
 import {
   parseTagNamesParam,
   resolveUploadTagIds
@@ -21,21 +24,19 @@ import {
 export default defineEventHandler(async (event) => {
   await requireUploadAuth(event)
 
-  const formData = await readMultipartFormData(event)
-  if (!formData?.length) {
+  const formData = await readFormData(event)
+  if (!formData) {
     createApiError(event, 'INVALID_REQUEST', '未收到上传文件', 400)
   }
 
-  const tokenField = formData.find(part => part.name === 'token')
-  const formToken = tokenField?.data?.length
-    ? new TextDecoder().decode(tokenField.data).trim()
-    : ''
+  const tokenField = formData.get('token')
+  const formToken = typeof tokenField === 'string' ? tokenField.trim() : ''
   checkUploadRateLimit(event, formToken)
 
   const source = verifyApiUploadToken(event) ? 'api' : 'web'
   const uploadUserId = await getUploadUserId(event, formToken)
 
-  const tagNamesRaw = readMultipartFormFieldValues(formData, 'tagNames')
+  const tagNamesRaw = readFormDataFieldValues(formData, 'tagNames')
   const uploadTagNames = parseTagNamesParam(tagNamesRaw.length === 1 ? tagNamesRaw[0] : tagNamesRaw)
   const resolvedTags = resolveUploadTagIds(uploadUserId, uploadTagNames)
   if ('message' in resolvedTags) {
@@ -44,9 +45,9 @@ export default defineEventHandler(async (event) => {
   const uploadTagIds = resolvedTags.tagIds
 
   // 兼容 image / file / files 字段名（图床脚本 / 通用客户端 / 网页多图）
-  const fileParts = formData.filter(
-    part => (part.name === 'image' || part.name === 'file' || part.name === 'files')
-      && part.data?.length
+  const fileParts = readFormDataFiles(
+    formData,
+    ['image', 'file', 'files']
   )
   if (!fileParts.length) {
     createApiError(event, 'INVALID_REQUEST', '未收到上传文件', 400)
@@ -65,8 +66,8 @@ export default defineEventHandler(async (event) => {
   const errors: UploadErrorItem[] = []
 
   for (const part of fileParts) {
-    const originalName = part.filename ?? 'image'
-    const bytes = new Uint8Array(part.data)
+    const originalName = part.name || 'image'
+    const bytes = new Uint8Array(await part.arrayBuffer())
     const declaredMime = part.type?.toLowerCase() ?? ''
     const detectedMime = detectMimeFromSignature(bytes)
 
@@ -94,7 +95,7 @@ export default defineEventHandler(async (event) => {
 
     const result = await processSingleImageUpload(event, {
       bytes,
-      filename: part.filename,
+      filename: part.name,
       source,
       userId: uploadUserId,
       tagIds: uploadTagIds

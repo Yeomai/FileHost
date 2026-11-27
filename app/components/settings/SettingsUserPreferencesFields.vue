@@ -1,7 +1,12 @@
 <script setup lang="ts">
-defineProps<{
+import type { UploadMediaKind } from '~/composables/useUploadPreferences'
+
+const props = withDefaults(defineProps<{
   part: 'upload-preference' | 'image-processing'
-}>()
+  kind?: UploadMediaKind
+}>(), {
+  kind: 'image'
+})
 
 const {
   compressEnabled,
@@ -9,7 +14,7 @@ const {
   copyFormat,
   clientWebpQuality,
   loadPreferences
-} = useUploadPreferences()
+} = useUploadPreferences(props.kind)
 
 const { t } = useI18n()
 

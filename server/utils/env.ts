@@ -10,6 +10,13 @@ import {
   SETTINGS_STORAGE_USE_DATE_PATH,
   SETTINGS_IMAGE_BASE_URL,
   SETTINGS_SITE_BASE_URL,
+  SETTINGS_VIDEO_BASE_URL,
+  SETTINGS_FILE_BASE_URL,
+  SETTINGS_DOMAIN_SEPARATION,
+  SETTINGS_IMAGE_DOMAIN_SEPARATED,
+  SETTINGS_VIDEO_DOMAIN_SEPARATED,
+  SETTINGS_FILE_DOMAIN_SEPARATED,
+  SETTINGS_FILE_BED_ACCESS,
   SETTINGS_WEBP_QUALITY,
   SETTINGS_LOGIN_VERIFICATION_METHOD,
   SETTINGS_TURNSTILE_SITE_KEY,
@@ -19,6 +26,22 @@ import {
   isAllowRegistration
 } from './db'
 import { getUploadPolicySettingsPayload } from './upload-policy'
+import { resolveRuntimeAppVersion } from './app-version'
+
+export type FileBedAccessMode = 'public' | 'token'
+
+export function parseFileBedAccessMode(
+  raw: string | null | undefined
+): FileBedAccessMode | null {
+  const value = raw?.trim().toLowerCase()
+  if (value === 'public' || value === 'token') return value
+  return null
+}
+
+/** 文件床直链访问方式：公开直链或需要 Token（默认公开） */
+export function getFileBedAccessMode(): FileBedAccessMode {
+  return parseFileBedAccessMode(getSetting(SETTINGS_FILE_BED_ACCESS)) ?? 'public'
+}
 
 export function getRuntimeEnv(
   event: H3Event,
@@ -65,6 +88,14 @@ export function normalizeImageBaseUrl(raw: string): string {
 }
 
 export function normalizeSiteBaseUrl(raw: string): string {
+  return normalizeBaseUrl(raw)
+}
+
+export function normalizeVideoBaseUrl(raw: string): string {
+  return normalizeBaseUrl(raw)
+}
+
+export function normalizeFileBaseUrl(raw: string): string {
   return normalizeBaseUrl(raw)
 }
 
@@ -121,6 +152,38 @@ export function getSiteBaseUrlConfigured(event: H3Event): string {
   return getSiteBaseUrlFromEnv(event)
 }
 
+export function getVideoBaseUrlFromEnv(event: H3Event): string {
+  return normalizeVideoBaseUrl(getRuntimeEnv(event, 'VIDEO_BASE_URL', 'videoBaseUrl'))
+}
+
+export function getVideoBaseUrlSource(event: H3Event): SettingSource {
+  if (getSetting(SETTINGS_VIDEO_BASE_URL) !== null) return 'db'
+  if (getVideoBaseUrlFromEnv(event)) return 'env'
+  return 'none'
+}
+
+export function getVideoBaseUrlConfigured(event: H3Event): string {
+  const dbRaw = getSetting(SETTINGS_VIDEO_BASE_URL)
+  if (dbRaw !== null) return normalizeVideoBaseUrl(dbRaw)
+  return getVideoBaseUrlFromEnv(event)
+}
+
+export function getFileBaseUrlFromEnv(event: H3Event): string {
+  return normalizeFileBaseUrl(getRuntimeEnv(event, 'FILE_BASE_URL', 'fileBaseUrl'))
+}
+
+export function getFileBaseUrlSource(event: H3Event): SettingSource {
+  if (getSetting(SETTINGS_FILE_BASE_URL) !== null) return 'db'
+  if (getFileBaseUrlFromEnv(event)) return 'env'
+  return 'none'
+}
+
+export function getFileBaseUrlConfigured(event: H3Event): string {
+  const dbRaw = getSetting(SETTINGS_FILE_BASE_URL)
+  if (dbRaw !== null) return normalizeFileBaseUrl(dbRaw)
+  return getFileBaseUrlFromEnv(event)
+}
+
 export function getSiteBaseUrl(event: H3Event): string {
   const dbRaw = getSetting(SETTINGS_SITE_BASE_URL)
   if (dbRaw !== null) {
@@ -139,6 +202,15 @@ export function getSiteBaseUrl(event: H3Event): string {
 }
 
 export function getImageBaseUrl(event: H3Event): string {
+  if (isDomainSeparationActive(event) && !isImageDomainSeparated(event)) {
+    return getSiteBaseUrl(event)
+  }
+  if (
+    getSetting(SETTINGS_DOMAIN_SEPARATION) === 'false'
+    && getSetting(SETTINGS_IMAGE_DOMAIN_SEPARATED) === 'false'
+  ) {
+    return getSiteBaseUrl(event)
+  }
   const dbRaw = getSetting(SETTINGS_IMAGE_BASE_URL)
   if (dbRaw !== null) {
     const configured = normalizeImageBaseUrl(dbRaw)
@@ -154,6 +226,64 @@ export function getImageBaseUrl(event: H3Event): string {
     xForwardedProto: true
   })
   return requestUrl.origin
+}
+
+export function getVideoBaseUrl(event: H3Event): string {
+  if (isDomainSeparationActive(event) && !isVideoDomainSeparated(event)) {
+    return getSiteBaseUrl(event)
+  }
+  if (
+    getSetting(SETTINGS_DOMAIN_SEPARATION) === 'false'
+    && getSetting(SETTINGS_VIDEO_DOMAIN_SEPARATED) === 'false'
+  ) {
+    return getSiteBaseUrl(event)
+  }
+  return getVideoBaseUrlConfigured(event) || getImageBaseUrl(event)
+}
+
+export function getFileBaseUrl(event: H3Event): string {
+  if (isDomainSeparationActive(event) && !isFileDomainSeparated(event)) {
+    return getSiteBaseUrl(event)
+  }
+  if (
+    getSetting(SETTINGS_DOMAIN_SEPARATION) === 'false'
+    && getSetting(SETTINGS_FILE_DOMAIN_SEPARATED) === 'false'
+  ) {
+    return getSiteBaseUrl(event)
+  }
+  return getFileBaseUrlConfigured(event) || getImageBaseUrl(event)
+}
+
+export function getMediaBaseUrl(event: H3Event, key: string): string {
+  if (key.startsWith('videos/')) return getVideoBaseUrl(event)
+  if (key.startsWith('files/')) return getFileBaseUrl(event)
+  return getImageBaseUrl(event)
+}
+
+function parseStoredBoolean(raw: string | null): boolean | null {
+  if (raw === null) return null
+  return raw === 'true'
+}
+
+export function isImageDomainSeparated(event: H3Event): boolean {
+  if (!isDomainSeparationActive(event)) return false
+  const explicit = parseStoredBoolean(getSetting(SETTINGS_IMAGE_DOMAIN_SEPARATED))
+  if (explicit !== null) return explicit
+  return Boolean(getImageBaseUrlConfigured(event))
+}
+
+export function isVideoDomainSeparated(event: H3Event): boolean {
+  if (!isDomainSeparationActive(event)) return false
+  const explicit = parseStoredBoolean(getSetting(SETTINGS_VIDEO_DOMAIN_SEPARATED))
+  if (explicit !== null) return explicit
+  return Boolean(getVideoBaseUrlConfigured(event))
+}
+
+export function isFileDomainSeparated(event: H3Event): boolean {
+  if (!isDomainSeparationActive(event)) return false
+  const explicit = parseStoredBoolean(getSetting(SETTINGS_FILE_DOMAIN_SEPARATED))
+  if (explicit !== null) return explicit
+  return Boolean(getFileBaseUrlConfigured(event))
 }
 
 export function isHideFolderInUrlFromEnv(): boolean {
@@ -539,26 +669,32 @@ export function isValidSiteBaseUrl(value: string): boolean {
 
 export function validateDomainSeparationPair(
   siteBaseUrl: string,
-  imageBaseUrl: string
+  imageBaseUrl: string,
+  videoBaseUrl = '',
+  fileBaseUrl = ''
 ): string | null {
   if (!siteBaseUrl || !imageBaseUrl) {
-    return '启用域名分离时需同时填写网站域名与图片域名'
+    return '启用域名分离时需同时填写后台域名与图片域名'
   }
-  if (!isValidSiteBaseUrl(siteBaseUrl) || !isValidImageBaseUrl(imageBaseUrl)) {
+  if (
+    !isValidSiteBaseUrl(siteBaseUrl)
+    || !isValidImageBaseUrl(imageBaseUrl)
+    || (videoBaseUrl && !isValidImageBaseUrl(videoBaseUrl))
+    || (fileBaseUrl && !isValidImageBaseUrl(fileBaseUrl))
+  ) {
     return '域名需为 http(s) 地址，且末尾不加 /'
   }
   const siteHost = hostnameFromBaseUrl(siteBaseUrl)
   const imageHost = hostnameFromBaseUrl(imageBaseUrl)
-  if (!siteHost || !imageHost) {
+  const videoHost = hostnameFromBaseUrl(videoBaseUrl)
+  const fileHost = hostnameFromBaseUrl(fileBaseUrl)
+  if (!siteHost || !imageHost || (videoBaseUrl && !videoHost) || (fileBaseUrl && !fileHost)) {
     return '域名格式无效'
-  }
-  if (siteHost === imageHost) {
-    return '网站域名与图片域名不能使用相同主机名'
   }
   return null
 }
 
-export type RequestHostRole = 'site' | 'image' | 'unknown' | 'single'
+export type RequestHostRole = 'site' | 'image' | 'video' | 'file' | 'unknown' | 'single'
 
 export function getIsolationRequestHost(event: H3Event): string {
   const requestUrl = getRequestURL(event, {
@@ -571,8 +707,12 @@ export function getIsolationRequestHost(event: H3Event): string {
 export function validateSettingsDomainPatch(input: {
   existingSite: string
   existingImage: string
+  existingVideo?: string
+  existingFile?: string
   nextSite: string
   nextImage: string
+  nextVideo?: string
+  nextFile?: string
   wantSeparation: boolean | null
   siteBaseUrlProvided: boolean
 }): string | null {
@@ -581,6 +721,8 @@ export function validateSettingsDomainPatch(input: {
     existingImage,
     nextSite,
     nextImage,
+    nextVideo = '',
+    nextFile = '',
     wantSeparation,
     siteBaseUrlProvided
   } = input
@@ -593,9 +735,9 @@ export function validateSettingsDomainPatch(input: {
 
   if (wantSeparation === true) {
     if (!nextSite || !nextImage) {
-      return '启用域名分离时需同时填写网站域名与图片域名'
+      return '启用域名分离时需同时填写后台域名与图片域名'
     }
-    return validateDomainSeparationPair(nextSite, nextImage)
+    return validateDomainSeparationPair(nextSite, nextImage, nextVideo, nextFile)
   }
 
   if (wantSeparation === false) {
@@ -607,7 +749,7 @@ export function validateSettingsDomainPatch(input: {
   }
 
   if (nextSite && nextImage) {
-    return validateDomainSeparationPair(nextSite, nextImage)
+    return validateDomainSeparationPair(nextSite, nextImage, nextVideo, nextFile)
   }
 
   return null
@@ -631,12 +773,18 @@ export function getRequestRuntime(event: H3Event) {
 
   const siteHost = hostnameFromBaseUrl(getSiteBaseUrlConfigured(event))
   const imageHost = hostnameFromBaseUrl(getImageBaseUrlConfigured(event))
+  const videoHost = hostnameFromBaseUrl(getVideoBaseUrl(event))
+  const fileHost = hostnameFromBaseUrl(getFileBaseUrl(event))
 
   let hostRole: RequestHostRole = 'unknown'
   if (currentHost === siteHost) {
     hostRole = 'site'
   } else if (currentHost === imageHost) {
     hostRole = 'image'
+  } else if (currentHost === videoHost) {
+    hostRole = 'video'
+  } else if (currentHost === fileHost) {
+    hostRole = 'file'
   }
 
   return {
@@ -652,10 +800,14 @@ export function getSettingsPayload(event: H3Event) {
   const allowedRefererHosts = getAllowedRefererHostsRaw(event)
   const siteBaseUrlConfigured = getSiteBaseUrlConfigured(event)
   const imageBaseUrlConfigured = getImageBaseUrlConfigured(event)
+  const videoBaseUrlConfigured = getVideoBaseUrlConfigured(event)
+  const fileBaseUrlConfigured = getFileBaseUrlConfigured(event)
   const effectiveSiteBaseUrl = getSiteBaseUrl(event)
   const effectiveImageBaseUrl = getImageBaseUrl(event)
+  const effectiveVideoBaseUrl = getVideoBaseUrl(event)
+  const effectiveFileBaseUrl = getFileBaseUrl(event)
   const autoDeleteDays = getAutoDeleteDays(event)
-  const appVersion = config.appVersion as string
+  const appVersion = resolveRuntimeAppVersion(String(config.appVersion ?? ''))
   const domainSeparation = isDomainSeparationActive(event)
   const hideFolderInUrl = isHideFolderInUrl(event)
   const hideFolderInUrlSource = getHideFolderInUrlSource()
@@ -677,8 +829,17 @@ export function getSettingsPayload(event: H3Event) {
     imageBaseUrl: imageBaseUrlConfigured,
     imageBaseUrlConfigured,
     imageBaseUrlSource: getImageBaseUrlSource(event),
+    imageDomainSeparated: isImageDomainSeparated(event),
+    videoBaseUrl: videoBaseUrlConfigured,
+    videoBaseUrlSource: getVideoBaseUrlSource(event),
+    videoDomainSeparated: isVideoDomainSeparated(event),
+    fileBaseUrl: fileBaseUrlConfigured,
+    fileBaseUrlSource: getFileBaseUrlSource(event),
+    fileDomainSeparated: isFileDomainSeparated(event),
     effectiveSiteBaseUrl,
     effectiveImageBaseUrl,
+    effectiveVideoBaseUrl,
+    effectiveFileBaseUrl,
     domainSeparation,
     runtime: getRequestRuntime(event),
     hideFolderInUrl,
@@ -688,6 +849,7 @@ export function getSettingsPayload(event: H3Event) {
     autoDeleteDays,
     autoDeleteDaysSource: getAutoDeleteDaysSource(),
     autoDeleteEnvFallback: parseAutoDeleteDays(getAutoDeleteDaysFromEnv()) ?? 0,
+    fileBedAccess: getFileBedAccessMode(),
     allowRegistration: isAllowRegistration(),
     loginVerificationMethod: getLoginVerificationMethod(event),
     turnstileSiteKey: getTurnstileSiteKeyConfigured(event),
@@ -708,6 +870,8 @@ export function getSettingsPayload(event: H3Event) {
 }
 
 export function isDomainSeparationActive(event: H3Event): boolean {
+  const explicit = getSetting(SETTINGS_DOMAIN_SEPARATION)
+  if (explicit !== null) return explicit === 'true'
   const siteHost = hostnameFromBaseUrl(getSiteBaseUrlConfigured(event))
   const imageHost = hostnameFromBaseUrl(getImageBaseUrlConfigured(event))
   return Boolean(siteHost && imageHost && siteHost !== imageHost)

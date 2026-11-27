@@ -154,7 +154,7 @@ export async function getCurrentUser(event: H3Event): Promise<AuthUser | null> {
   }
 
   const user = findUserById(session.user_id)
-  if (!user) return null
+  if (!user || user.disabled_at) return null
 
   return rowToAuthUser(user)
 }

@@ -8,6 +8,7 @@ defineProps<{
   totalPages: number
   total: number
   pageSize: number
+  showHidden: boolean
   loading?: boolean
 }>()
 
@@ -15,6 +16,9 @@ const emit = defineEmits<{
   'retry': [jobId: string]
   'download': [jobId: string]
   'cancel': [jobId: string]
+  'hide': [jobId: string, hidden: boolean]
+  'hideAll': [hidden: boolean]
+  'toggleHidden': []
   'view': [job: BackupJobItem]
   'update:page': [page: number]
   'update:pageSize': [pageSize: number]
@@ -26,7 +30,8 @@ function typeLabel(type: BackupJobItem['type']): string {
   const map: Record<BackupJobItem['type'], string> = {
     full_export: t('storage.backup.jobTypeExport'),
     full_restore: t('storage.backup.jobTypeRestore'),
-    backend_sync: t('storage.backup.jobTypeSync')
+    backend_sync: t('storage.backup.jobTypeSync'),
+    site_sync: t('storage.backup.jobTypeSiteSync')
   }
   return map[type]
 }
@@ -51,6 +56,12 @@ function statusLabel(status: BackupJobItem['status']): string {
 function progressPercent(job: BackupJobItem): number {
   if (!job.total) return job.status === 'done' ? 100 : 0
   return Math.min(100, Math.round((job.progress / job.total) * 100))
+}
+
+function progressUnit(job: BackupJobItem): string {
+  return job.type === 'full_restore'
+    ? t('storage.backup.progressUnitObjects')
+    : t('storage.backup.progressUnitMedia')
 }
 
 function jobMessage(job: BackupJobItem): string {
@@ -78,6 +89,10 @@ function canView(job: BackupJobItem): boolean {
   return job.type === 'full_restore' && job.status === 'done' && Boolean(job.message)
 }
 
+function canHide(job: BackupJobItem): boolean {
+  return job.status === 'done' || job.status === 'failed' || job.hidden
+}
+
 function formatTime(value: string) {
   if (!value) return '—'
   return new Date(value).toLocaleString(locale.value, { hour12: false })
@@ -95,11 +110,33 @@ function formatTime(value: string) {
           {{ t('storage.backup.jobsSubtitle') }}
         </p>
       </div>
-      <UIcon
-        v-if="polling"
-        name="i-lucide-loader-circle"
-        class="size-4 shrink-0 animate-spin text-muted"
-      />
+      <div class="flex shrink-0 items-center gap-2">
+        <UIcon
+          v-if="polling"
+          name="i-lucide-loader-circle"
+          class="size-4 animate-spin text-muted"
+        />
+        <UButton
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :icon="showHidden ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+          :label="showHidden
+            ? t('storage.backup.hiddenJobsHide')
+            : t('storage.backup.hiddenJobsShow')"
+          @click="emit('toggleHidden')"
+        />
+        <UButton
+          size="xs"
+          variant="outline"
+          color="neutral"
+          :icon="showHidden ? 'i-lucide-rotate-ccw' : 'i-lucide-x'"
+          :label="showHidden
+            ? t('storage.backup.jobsRestoreAll')
+            : t('storage.backup.jobsHideAll')"
+          @click="emit('hideAll', !showHidden)"
+        />
+      </div>
     </header>
 
     <div
@@ -135,7 +172,7 @@ function formatTime(value: string) {
               {{ t('storage.backup.colProgress') }}
             </th>
             <th class="px-4 py-3 font-medium sm:px-5">
-              {{ t('storage.backup.colCreated') }}
+              {{ t('storage.backup.colUpdated') }}
             </th>
             <th class="px-4 py-3 font-medium sm:px-5">
               {{ t('storage.backup.colActions') }}
@@ -174,7 +211,7 @@ function formatTime(value: string) {
                 class="text-xs text-dimmed"
               >—</span>
             </td>
-            <td class="min-w-32 px-4 py-3.5 sm:px-5">
+            <td class="min-w-40 px-4 py-3.5 sm:px-5">
               <div class="flex items-center gap-2">
                 <div class="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                   <div
@@ -183,15 +220,20 @@ function formatTime(value: string) {
                     :style="{ width: `${progressPercent(job)}%` }"
                   />
                 </div>
-                <span class="shrink-0 text-xs tabular-nums text-muted">
-                  <template v-if="job.total">{{ job.progress }}/{{ job.total }}</template>
-                  <template v-else-if="job.status === 'done'">100%</template>
-                  <template v-else>—</template>
+                <span class="flex shrink-0 flex-col text-right">
+                  <span class="text-xs tabular-nums text-muted">
+                    <template v-if="job.total">{{ job.progress }}/{{ job.total }}</template>
+                    <template v-else-if="job.status === 'done'">100%</template>
+                    <template v-else>—</template>
+                  </span>
+                  <span class="text-[10px] text-dimmed">
+                    {{ progressUnit(job) }}
+                  </span>
                 </span>
               </div>
             </td>
             <td class="px-4 py-3.5 whitespace-nowrap text-xs text-muted sm:px-5">
-              {{ formatTime(job.createdAt) }}
+              {{ formatTime(job.updatedAt || job.finishedAt || job.createdAt) }}
             </td>
             <td class="px-4 py-3.5 sm:px-5">
               <div class="flex flex-wrap gap-1.5">
@@ -230,6 +272,17 @@ function formatTime(value: string) {
                   variant="outline"
                   color="neutral"
                   @click="emit('retry', job.id)"
+                />
+                <UButton
+                  v-if="canHide(job)"
+                  size="xs"
+                  variant="outline"
+                  :color="job.hidden ? 'neutral' : 'error'"
+                  :icon="job.hidden ? 'i-lucide-eye' : 'i-lucide-x'"
+                  :title="job.hidden
+                    ? t('storage.backup.jobUnhide')
+                    : t('storage.backup.jobHide')"
+                  @click="emit('hide', job.id, !job.hidden)"
                 />
               </div>
             </td>

@@ -9,6 +9,8 @@ export {
   startFullExportJob,
   startFullRestoreJob,
   startBackendSyncJob,
+  startSiteSyncJob,
+  resumeSiteSyncJob,
   isBackupRunnerBusy,
   cancelBackupJob
 } from './runner'

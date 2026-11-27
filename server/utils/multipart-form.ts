@@ -1,22 +1,28 @@
 import type { MultiPartData } from 'h3'
 
+function parseFieldValues(rawValues: string[]): string[] {
+  const values = rawValues.map(value => value.trim()).filter(Boolean)
+  if (values.length !== 1) return values
+
+  const raw = values[0]!
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => String(item).trim()).filter(Boolean)
+    }
+  } catch {
+    // fall through to comma-separated parsing
+  }
+  return raw.split(',').map(item => item.trim()).filter(Boolean)
+}
+
 export function readMultipartFormFieldValues(
   formData: MultiPartData[],
   fieldName: string
 ): string[] {
   const field = formData.find(part => part.name === fieldName)
   if (field?.data?.length) {
-    const raw = new TextDecoder().decode(field.data).trim()
-    if (!raw) return []
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed)) {
-        return parsed.map(item => String(item).trim()).filter(Boolean)
-      }
-    } catch {
-      // fall through to comma-separated parsing
-    }
-    return raw.split(',').map(item => item.trim()).filter(Boolean)
+    return parseFieldValues([new TextDecoder().decode(field.data)])
   }
 
   const repeatFields = formData.filter(
@@ -24,7 +30,25 @@ export function readMultipartFormFieldValues(
   )
   if (!repeatFields.length) return []
 
-  return repeatFields
-    .map(part => new TextDecoder().decode(part.data!).trim())
-    .filter(Boolean)
+  return parseFieldValues(
+    repeatFields.map(part => new TextDecoder().decode(part.data!))
+  )
+}
+
+export function readFormDataFieldValues(
+  formData: FormData,
+  fieldName: string
+): string[] {
+  return parseFieldValues(
+    formData.getAll(fieldName).filter((value): value is string => typeof value === 'string')
+  )
+}
+
+export function readFormDataFiles(
+  formData: FormData,
+  fieldNames: string[]
+): File[] {
+  return fieldNames
+    .flatMap(name => formData.getAll(name))
+    .filter((value): value is File => value instanceof File && value.size > 0)
 }

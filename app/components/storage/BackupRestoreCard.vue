@@ -54,6 +54,19 @@ function formatTime(value: string) {
   return new Date(value).toLocaleString(locale.value, { hour12: false })
 }
 
+function getErrorMessage(error: unknown) {
+  const value = error as {
+    data?: { data?: { message?: string }, message?: string }
+    statusMessage?: string
+    message?: string
+  }
+  return value?.data?.data?.message
+    ?? value?.data?.message
+    ?? value?.statusMessage
+    ?? value?.message
+    ?? t('storage.backup.previewFailed')
+}
+
 function pickFile() {
   fileInput.value?.click()
 }
@@ -90,8 +103,12 @@ async function submit() {
       archiveName: selectedPackage.value || undefined
     })
     confirmOpen.value = true
-  } catch {
-    toast.add({ title: t('storage.backup.previewFailed'), color: 'error' })
+  } catch (error: unknown) {
+    toast.add({
+      title: t('storage.backup.previewFailed'),
+      description: getErrorMessage(error),
+      color: 'error'
+    })
   } finally {
     previewLoading.value = false
   }

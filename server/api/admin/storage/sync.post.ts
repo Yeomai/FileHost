@@ -13,7 +13,7 @@ interface SyncBody {
 }
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
   const body = await readBody<SyncBody>(event)
 
   const fromBackendId = body?.fromBackendId?.trim() ?? ''
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
       return { preview }
     }
 
-    const job = startBackendSyncJob(options)
+    const job = startBackendSyncJob(options, user.id)
     return { job: serializeBackupJob(job) }
   } catch (error) {
     if (error instanceof Error) {

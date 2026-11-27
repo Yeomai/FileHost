@@ -1,3 +1,6 @@
+import { readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
 const GITHUB_REPO = 'O96u/PicHost'
 const RELEASES_LATEST_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
 const CACHE_TTL_MS = 60 * 60 * 1000
@@ -8,6 +11,26 @@ export interface LatestReleaseInfo {
 }
 
 let cachedRelease: { fetchedAt: number, value: LatestReleaseInfo | null } | null = null
+let cachedPackageVersion: { mtimeMs: number, version: string } | null = null
+
+/** Read package.json at request time so a hot-reloaded version update is visible without restart. */
+export function resolveRuntimeAppVersion(fallback: string): string {
+  const path = join(process.cwd(), 'package.json')
+  try {
+    const mtimeMs = statSync(path).mtimeMs
+    if (cachedPackageVersion?.mtimeMs === mtimeMs) {
+      return cachedPackageVersion.version
+    }
+    const pkg = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
+    const version = typeof pkg.version === 'string' && pkg.version
+      ? pkg.version
+      : fallback
+    cachedPackageVersion = { mtimeMs, version }
+    return version
+  } catch {
+    return fallback
+  }
+}
 
 export function normalizeVersionTag(tag: string): string {
   return tag.trim().replace(/^v/i, '')

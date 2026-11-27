@@ -13,16 +13,52 @@ const mobileUserOpen = ref(false)
 const navItems = computed(() => {
   const items = [
     { label: t('nav.api'), to: '/api', icon: 'i-lucide-code-2' },
-    { label: t('nav.gallery'), to: '/gallery', icon: 'i-lucide-images' }
+    { label: t('nav.gallery'), to: '/gallery', icon: 'i-lucide-images' },
+    { label: t('nav.videoLibrary'), to: '/video-library', icon: 'i-lucide-film' },
+    { label: t('nav.fileLibrary'), to: '/file-library', icon: 'i-lucide-folder-open' }
   ]
   if (isAdmin.value) {
+    items.push({ label: t('nav.users'), to: '/users', icon: 'i-lucide-users' })
     items.push({ label: t('nav.storage'), to: '/storage', icon: 'i-lucide-hard-drive' })
   }
   items.push({ label: t('nav.settings'), to: '/settings', icon: 'i-lucide-settings' })
   return items
 })
 
+/** 三个上传入口，与顶部 Logo 并列 */
+const hostItems = computed(() => [
+  {
+    label: t('host.image'),
+    to: '/',
+    icon: 'i-lucide-image',
+    title: t('host.imageFull')
+  },
+  {
+    label: t('host.video'),
+    to: '/videos',
+    icon: 'i-lucide-film',
+    title: t('host.videoFull')
+  },
+  {
+    label: t('host.file'),
+    to: '/files',
+    icon: 'i-lucide-folder-open',
+    title: t('host.fileFull')
+  }
+])
+
+const mobileNavItems = computed(() => [...hostItems.value, ...navItems.value])
+
+function isHostActive(to: string) {
+  return route.path === to || route.path.startsWith(`${to}/`)
+}
+
 const accountMenuItems = computed<DropdownMenuItem[]>(() => [
+  {
+    label: t('profile.title'),
+    icon: 'i-lucide-user-round',
+    to: '/account/profile'
+  },
   {
     label: t('nav.changePassword'),
     icon: 'i-lucide-key-round',
@@ -66,34 +102,50 @@ async function handleLogout() {
     <header class="sticky top-0 z-40 border-b border-default bg-default/80 backdrop-blur">
       <div class="mx-auto max-w-7xl px-4 py-2.5 sm:px-6">
         <div class="flex items-center justify-between gap-3">
-          <NuxtLink
-            to="/"
-            :title="t('nav.backToUpload')"
-            class="group flex min-w-0 shrink items-center gap-2.5 transition-opacity hover:opacity-90 sm:gap-3"
-          >
-            <img
-              :src="logoLight"
-              alt="PicHost"
-              class="h-9 w-auto shrink-0 object-contain sm:h-11 dark:hidden"
-              decoding="async"
-              draggable="false"
+          <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+            <NuxtLink
+              to="/"
+              :title="t('host.imageFull')"
+              class="group flex min-w-0 shrink items-center gap-2.5 transition-opacity hover:opacity-90 sm:gap-3"
             >
-            <img
-              :src="logoDark"
-              alt="PicHost"
-              class="hidden h-9 w-auto shrink-0 object-contain sm:h-11 dark:block"
-              decoding="async"
-              draggable="false"
-            >
-            <div class="min-w-0 leading-tight">
-              <p class="text-[15px] font-bold tracking-tight sm:text-base">
-                <span class="text-highlighted">Pic</span><span class="text-primary">Host</span>
-              </p>
-              <p class="mt-0.5 hidden text-[11px] text-muted min-[380px]:block sm:text-xs">
-                {{ t('app.tagline') }}
-              </p>
-            </div>
-          </NuxtLink>
+              <img
+                :src="logoLight"
+                alt="PicHost"
+                class="h-9 w-auto shrink-0 object-contain sm:h-11 dark:hidden"
+                decoding="async"
+                draggable="false"
+              >
+              <img
+                :src="logoDark"
+                alt="PicHost"
+                class="hidden h-9 w-auto shrink-0 object-contain sm:h-11 dark:block"
+                decoding="async"
+                draggable="false"
+              >
+              <div class="min-w-0 leading-tight">
+                <p class="text-[15px] font-bold tracking-tight sm:text-base">
+                  <span class="text-highlighted">Pic</span><span class="text-primary">Host</span>
+                </p>
+                <p class="mt-0.5 hidden text-[11px] text-muted min-[380px]:block sm:text-xs">
+                  {{ t('app.tagline') }}
+                </p>
+              </div>
+            </NuxtLink>
+
+            <nav class="hidden items-center gap-1 sm:flex">
+              <UButton
+                v-for="item in hostItems"
+                :key="item.to"
+                :to="item.to"
+                :icon="item.icon"
+                :label="item.label"
+                :title="item.title"
+                size="sm"
+                :variant="isHostActive(item.to) ? 'soft' : 'ghost'"
+                :color="isHostActive(item.to) ? 'primary' : 'neutral'"
+              />
+            </nav>
+          </div>
 
           <ClientOnly>
             <div class="flex shrink-0 items-center gap-0.5 sm:gap-1">
@@ -124,7 +176,7 @@ async function handleLogout() {
                 />
                 <MobileNavMenu
                   v-model:open="mobileNavOpen"
-                  :items="navItems"
+                  :items="mobileNavItems"
                 />
               </div>
 

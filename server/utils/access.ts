@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import { findUserByApiToken, getPrimaryAdminUserId } from './db'
+import { findUserById, findUserByApiToken, getPrimaryAdminUserId } from './db'
 import { getAdminSecret, getApiUploadToken } from './env'
 import { createApiError } from './api-error'
 import {
@@ -110,6 +110,36 @@ export function resolveUserIdFromApiToken(
   return null
 }
 
+/** 两站点同步：全站 Token 或管理员个人 Token；也允许管理员网页会话。 */
+export async function requireSiteSyncAuth(event: H3Event): Promise<AuthUser> {
+  if (devBypass(event)) {
+    return { id: 0, username: 'dev', role: 'admin' }
+  }
+
+  if (verifyGlobalApiUploadToken(event)) {
+    const adminId = getPrimaryAdminUserId()
+    if (adminId != null) {
+      const admin = findUserById(adminId)
+      if (admin) {
+        return { id: admin.id, username: admin.username, role: admin.role }
+      }
+    }
+  }
+
+  const userId = resolveUserIdFromApiToken(event)
+  if (userId != null) {
+    const user = findUserById(userId)
+    if (user?.role === 'admin') {
+      return { id: user.id, username: user.username, role: user.role }
+    }
+  }
+
+  const sessionUser = await getCurrentUser(event)
+  if (sessionUser?.role === 'admin') return sessionUser
+
+  createApiError(event, 'FORBIDDEN', '需要目标站点管理员同步 Token', 403)
+}
+
 export function verifyApiUploadToken(event: H3Event): boolean {
   return verifyGlobalApiUploadToken(event)
     || resolveUserIdFromApiToken(event) !== null
@@ -181,12 +211,12 @@ export async function requireApiOrAdminAuth(event: H3Event): Promise<void> {
   }
 }
 
-/** 列表/搜索/删除时按用户过滤；全局 Token 视为管理员，用户 Token 仅见自己的 */
+/** 列表/搜索/删除时按用户过滤；管理员和普通用户都只能访问自己的媒体 */
 export async function getImageUserFilter(
   event: H3Event
 ): Promise<number | 'admin'> {
   if (devBypass(event)) {
-    return 'admin'
+    return getPrimaryAdminUserId() ?? 'admin'
   }
 
   const userIdFromToken = resolveUserIdFromApiToken(event)
@@ -195,13 +225,10 @@ export async function getImageUserFilter(
   }
 
   if (verifyGlobalApiUploadToken(event)) {
-    return 'admin'
+    return getPrimaryAdminUserId() ?? 'admin'
   }
 
   const user = await requireUserAuth(event)
-  if (user.role === 'admin') {
-    return 'admin'
-  }
   return user.id
 }
 
@@ -223,14 +250,14 @@ export async function assertImageOwnership(
   }
 
   if (verifyGlobalApiUploadToken(event)) {
+    const ownerId = userId ?? null
+    if (ownerId === null || ownerId !== getPrimaryAdminUserId()) {
+      createApiError(event, 'FORBIDDEN', '无权操作此图片', 403)
+    }
     return
   }
 
   const user = await requireUserAuth(event)
-  if (user.role === 'admin') {
-    return
-  }
-
   const ownerId = userId ?? null
   if (ownerId === null || ownerId !== user.id) {
     createApiError(event, 'FORBIDDEN', '无权操作此图片', 403)
@@ -285,4 +312,22 @@ export async function getUploadUserId(
   }
 
   return null
+}
+
+/** 文件床直链在 Token 模式下的校验：Auth-Token 头、?token= 查询参数或已登录会话 */
+export async function isFileAccessAuthorized(event: H3Event): Promise<boolean> {
+  if (devBypass(event)) return true
+  if (verifyApiUploadToken(event)) return true
+
+  const queryToken = getQuery(event).token
+  if (
+    typeof queryToken === 'string'
+    && queryToken
+    && verifyUploadTokenValue(event, queryToken)
+  ) {
+    return true
+  }
+
+  const user = await getCurrentUser(event)
+  return Boolean(user)
 }

@@ -70,6 +70,12 @@ async function submit() {
       secret.value = ''
       await resetVerification()
       toast.add({ title: t('auth.loginSuccess'), color: 'success' })
+    } else if (result.needsPasswordReset) {
+      await resetVerification()
+      await router.push({
+        path: '/reset-password',
+        query: { username: result.resetUsername ?? username.value.trim() }
+      })
     } else {
       await resetVerification()
       toast.add({

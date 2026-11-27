@@ -1,32 +1,30 @@
 <script setup lang="ts">
-export interface GalleryStatsData {
-  uploadToday: number
-  uploadYesterday: number
-  uploadMonth: number
-  uploadLastMonth: number
-  uploadTotal: number
-  storedCount: number
-  uploadBytesTotal: number
-  bySource: {
-    web: number
-    api: number
-  }
-  storageUsage: {
-    usedBytes: number
-    totalBytes: number | null
-    percent: number | null
-  }
-}
+import type { LibraryStatsData, MediaType } from '~/types/media'
 
-const props = defineProps<{
-  stats: GalleryStatsData | null
+const props = withDefaults(defineProps<{
+  stats: LibraryStatsData | null
+  /** 统计口径：图片 / 视频 / 文件各自独立 */
+  kind?: MediaType
   loading?: boolean
-}>()
+}>(), {
+  kind: 'image'
+})
 
 const { t } = useI18n()
 const { formatFileSize } = useFileSize()
 
 const SOURCE_COLORS = ['var(--ui-primary)', '#10b981'] as const
+
+const totalHint = computed(() => {
+  switch (props.kind) {
+    case 'video':
+      return t('library.statsTotalHintVideo')
+    case 'file':
+      return t('library.statsTotalHintFile')
+    default:
+      return t('library.statsTotalHintImage')
+  }
+})
 
 const sourceItems = computed(() => {
   const bySource = props.stats?.bySource
@@ -147,7 +145,7 @@ function displayValue(value: number | undefined) {
         {{ displayValue(stats?.uploadTotal) }}
       </p>
       <p class="mt-2 text-xs text-muted">
-        {{ t('stats.totalFiles') }}
+        {{ totalHint }}
       </p>
     </div>
 

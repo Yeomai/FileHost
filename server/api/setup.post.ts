@@ -4,10 +4,23 @@ import {
   createUserAccount,
   isInitialized
 } from '../utils/auth'
-import { setAllowRegistration, setSetting, SETTINGS_IMAGE_BASE_URL, SETTINGS_SITE_BASE_URL } from '../utils/db'
 import {
+  setAllowRegistration,
+  setSetting,
+  SETTINGS_IMAGE_BASE_URL,
+  SETTINGS_SITE_BASE_URL,
+  SETTINGS_VIDEO_BASE_URL,
+  SETTINGS_FILE_BASE_URL,
+  SETTINGS_DOMAIN_SEPARATION,
+  SETTINGS_IMAGE_DOMAIN_SEPARATED,
+  SETTINGS_VIDEO_DOMAIN_SEPARATED,
+  SETTINGS_FILE_DOMAIN_SEPARATED
+} from '../utils/db'
+import {
+  normalizeFileBaseUrl,
   normalizeImageBaseUrl,
   normalizeSiteBaseUrl,
+  normalizeVideoBaseUrl,
   validateDomainSeparationPair
 } from '../utils/env'
 import { clientIp, logInfo } from '../utils/logger'
@@ -19,6 +32,8 @@ interface SetupBody {
   domainSeparation?: boolean
   siteBaseUrl?: string
   imageBaseUrl?: string
+  videoBaseUrl?: string
+  fileBaseUrl?: string
 }
 
 export default defineEventHandler(async (event) => {
@@ -42,12 +57,27 @@ export default defineEventHandler(async (event) => {
     if (body?.domainSeparation) {
       const siteBaseUrl = normalizeSiteBaseUrl(body.siteBaseUrl ?? '')
       const imageBaseUrl = normalizeImageBaseUrl(body.imageBaseUrl ?? '')
-      const pairError = validateDomainSeparationPair(siteBaseUrl, imageBaseUrl)
+      const videoBaseUrl = normalizeVideoBaseUrl(body.videoBaseUrl ?? '')
+      const fileBaseUrl = normalizeFileBaseUrl(body.fileBaseUrl ?? '')
+      const pairError = validateDomainSeparationPair(
+        siteBaseUrl,
+        imageBaseUrl,
+        videoBaseUrl,
+        fileBaseUrl
+      )
       if (pairError) {
         createApiError(event, 'INVALID_REQUEST', pairError, 400)
       }
       setSetting(SETTINGS_SITE_BASE_URL, siteBaseUrl)
       setSetting(SETTINGS_IMAGE_BASE_URL, imageBaseUrl)
+      setSetting(SETTINGS_VIDEO_BASE_URL, videoBaseUrl)
+      setSetting(SETTINGS_FILE_BASE_URL, fileBaseUrl)
+      setSetting(SETTINGS_DOMAIN_SEPARATION, 'true')
+      setSetting(SETTINGS_IMAGE_DOMAIN_SEPARATED, imageBaseUrl ? 'true' : 'false')
+      setSetting(SETTINGS_VIDEO_DOMAIN_SEPARATED, videoBaseUrl ? 'true' : 'false')
+      setSetting(SETTINGS_FILE_DOMAIN_SEPARATED, fileBaseUrl ? 'true' : 'false')
+    } else {
+      setSetting(SETTINGS_DOMAIN_SEPARATION, 'false')
     }
 
     await createSession(event, user.id)

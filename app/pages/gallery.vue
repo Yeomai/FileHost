@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ImageItem } from '~/types/image'
+import SiteSyncSelectedDialog from '~/components/storage/SiteSyncSelectedDialog.vue'
 
 interface StatsResponse {
   uploadToday: number
@@ -51,8 +52,7 @@ const {
   activeTagMode,
   activeUntaggedOnly,
   setActiveTagFilter,
-  toggleTagFilter,
-  listQueryParams
+  toggleTagFilter
 } = useImageList()
 
 const { items: tagItems, fetchTags, batchUpdateTags } = useTags()
@@ -73,8 +73,9 @@ const batchDeleting = ref(false)
 const showScrollTop = ref(false)
 const previewOpen = ref(false)
 const previewImage = ref<ImageItem | null>(null)
-const viewMode = ref<'grid' | 'list'>('grid')
+const { viewMode } = useLibraryView('image')
 const batchTagOpen = ref(false)
+const syncOpen = ref(false)
 
 const currentUploadSource = ref('all')
 const currentStorageBackend = ref('all')
@@ -94,6 +95,7 @@ const storageBackendItems = computed(() => [
 ])
 
 const selectedCount = computed(() => selectedKeys.value.size)
+const syncKeys = computed(() => [...selectedKeys.value])
 
 function onWindowScroll() {
   showScrollTop.value = window.scrollY > 400
@@ -104,9 +106,9 @@ function scrollToTop() {
 }
 
 async function fetchStats() {
-  stats.value = await $fetch<StatsResponse>('/api/stats', {
+  stats.value = await $fetch<StatsResponse>('/api/library/stats', {
     credentials: 'include',
-    query: listQueryParams()
+    query: { kind: 'image' }
   })
 }
 
@@ -265,6 +267,10 @@ async function confirmBatchTags(tagIds: number[], action: 'add' | 'remove') {
 
 function goToTagSettings() {
   void navigateTo({ path: '/settings', query: { tab: 'tags' } })
+}
+
+function openSync() {
+  syncOpen.value = true
 }
 
 function updateSelectedKeys(keys: Set<string>) {
@@ -466,7 +472,8 @@ watch(isAuthenticated, async (authed, prev) => {
         />
       </div>
 
-      <GalleryStatsOverview
+      <LibraryStatsPanel
+        kind="image"
         :stats="stats"
         :loading="statsLoading"
       />
@@ -495,6 +502,7 @@ watch(isAuthenticated, async (authed, prev) => {
             :loading="galleryLoading"
             :show-batch-delete="true"
             :show-batch-tags="selectedCount > 0"
+            :show-batch-sync="selectedCount > 0"
             @update:storage-backend="handleStorageBackendChange"
             @update:upload-source="handleUploadSourceChange"
             @update:tag-ids="handleTagIdsChange"
@@ -505,6 +513,7 @@ watch(isAuthenticated, async (authed, prev) => {
             @reset="handleResetFilters"
             @batch-delete="requestBatchDelete"
             @batch-tags="batchTagOpen = true"
+            @batch-sync="openSync"
             @manage-tags="goToTagSettings"
           />
         </div>
@@ -589,6 +598,12 @@ watch(isAuthenticated, async (authed, prev) => {
         :tags="tagItems"
         :selected-count="selectedCount"
         @confirm="confirmBatchTags"
+      />
+
+      <SiteSyncSelectedDialog
+        v-model:open="syncOpen"
+        :keys="syncKeys"
+        scope="image"
       />
 
       <UButton

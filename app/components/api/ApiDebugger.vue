@@ -65,8 +65,14 @@ function resetForm() {
     if (!isDebugParam(param)) continue
     if (param.type === 'file') {
       files[param.name] = null
+    } else if (param.name === 'kind') {
+      values[param.name] = props.endpoint.category === 'video' ? 'video' : 'file'
     } else if (param.name === 'keys') {
-      values[param.name] = '["images/2026/08/example.webp"]'
+      values[param.name] = props.endpoint.category === 'video'
+        ? '["videos/2026/10/example.mp4"]'
+        : props.endpoint.category === 'file'
+          ? '["files/2026/10/example.pdf"]'
+          : '["images/2026/08/example.webp"]'
     } else if (param.name === 'token' && props.token) {
       values[param.name] = props.token
     } else {
@@ -82,6 +88,12 @@ function resetForm() {
 
 function fileLabel(name: string) {
   return fileValues.value[name]?.name ?? t('api.debug.noFileSelected')
+}
+
+function fileAccept() {
+  if (props.endpoint.category === 'video') return 'video/*'
+  if (props.endpoint.category === 'file') return undefined
+  return 'image/*'
 }
 
 function triggerFilePick(name: string) {
@@ -101,8 +113,8 @@ function isParamFilled(param: ApiDocParam) {
   if (!value) return false
   if (param.location === 'body' && param.name === 'keys') {
     try {
-      const parsed = JSON.parse(value) as { keys?: unknown }
-      return Array.isArray(parsed.keys) && parsed.keys.length > 0
+      const parsed = JSON.parse(value) as unknown
+      return Array.isArray(parsed) && parsed.length > 0
     } catch {
       return false
     }
@@ -159,7 +171,14 @@ async function sendRequest() {
     } else if (debugBodyParams.value.some(p => p.location === 'body')) {
       headers['Content-Type'] = 'application/json'
       try {
-        body = JSON.stringify(JSON.parse(paramValues.value.keys || '{}'))
+        const payload: Record<string, unknown> = {}
+        for (const param of debugBodyParams.value) {
+          if (param.location !== 'body') continue
+          const value = paramValues.value[param.name]?.trim()
+          if (!value) continue
+          payload[param.name] = param.name === 'keys' ? JSON.parse(value) : value
+        }
+        body = JSON.stringify(payload)
       } catch {
         toast.add({ title: t('api.debug.invalidJson'), color: 'error' })
         sending.value = false
@@ -297,7 +316,7 @@ const responseScrollable = computed(() => responseBody.value.split('\n').length 
                 <input
                   :ref="(el) => { fileInputRefs[param.name] = el as HTMLInputElement }"
                   type="file"
-                  accept="image/*"
+                  :accept="fileAccept()"
                   class="hidden"
                   @change="onFileChange(param.name, $event)"
                 >

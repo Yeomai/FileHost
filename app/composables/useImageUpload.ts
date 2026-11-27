@@ -4,21 +4,23 @@ import type {
 } from '~/types/image'
 import { isUnauthorizedError } from './useAuth'
 import { prepareFilesForUpload } from './useClipboardImage'
+import { normalizeUploadTagNames } from './useUploadPreferences'
+import { uploadFormDataWithProgress } from '~/utils/upload-progress'
 
 const MAX_FILES = 10
 
 export function useImageUpload() {
   const toast = useToast()
   const { t } = useI18n()
-  const { compressEnabled, clientWebpQuality, lastTagIds } = useUploadPreferences()
-  const { items: tagItems } = useTags()
+  const { compressEnabled, clientWebpQuality, uploadTagNames } = useUploadPreferences()
+  const { load: loadUploadPolicy } = useUploadPolicy()
   const uploading = ref(false)
   const progressItems = ref<UploadProgressItem[]>([])
   const lastUploadResult = ref<UploadResponse | null>(null)
 
   async function uploadFiles(
     files: File[],
-    options?: { notify?: boolean, tagIds?: number[] }
+    options?: { notify?: boolean }
   ) {
     if (uploading.value) return
 
@@ -43,15 +45,32 @@ export function useImageUpload() {
     }))
 
     try {
-      const prepared = await prepareFilesForUpload(files, {
+      const preparedFiles = await prepareFilesForUpload(files, {
         enabled: compressEnabled.value,
         quality: clientWebpQuality.value / 100
       })
+      const currentPolicy = await loadUploadPolicy().catch(() => null)
+      const maxFileSizeMb = currentPolicy?.imageMaxFileSizeMb ?? 10
+      const prepared = preparedFiles.filter((file) => {
+        if (file.size <= maxFileSizeMb * 1024 * 1024) return true
+        toast.add({
+          title: t('files.fileTooLarge', {
+            name: file.name,
+            limit: maxFileSizeMb
+          }),
+          color: 'error'
+        })
+        return false
+      })
+      if (!prepared.length) {
+        progressItems.value = []
+        return
+      }
 
-      progressItems.value = prepared.map((file, index) => ({
+      progressItems.value = prepared.map(file => ({
         name: file.name,
         status: 'uploading',
-        progress: Math.round(((index + 1) / prepared.length) * 50)
+        progress: 0
       }))
 
       const formData = new FormData()
@@ -59,21 +78,21 @@ export function useImageUpload() {
         formData.append('files', file, file.name)
       }
 
-      const tagIds = options?.tagIds ?? lastTagIds.value
-      if (tagIds.length) {
-        const names = tagIds
-          .map(id => tagItems.value.find(tag => tag.id === id)?.name)
-          .filter((name): name is string => Boolean(name))
-        if (names.length) {
-          formData.append('tagNames', JSON.stringify(names))
-        }
-        lastTagIds.value = tagIds
+      const tagNames = normalizeUploadTagNames(uploadTagNames.value).join(',')
+      if (tagNames) {
+        formData.append('tagNames', tagNames)
       }
 
-      const response = await $fetch<UploadResponse>('/api/images/upload', {
-        method: 'POST',
-        body: formData
-      })
+      const response = await uploadFormDataWithProgress<UploadResponse>(
+        '/api/images/upload',
+        formData,
+        (percent) => {
+          progressItems.value = progressItems.value.map(item => ({
+            ...item,
+            progress: Math.min(99, percent)
+          }))
+        }
+      )
 
       lastUploadResult.value = response
 

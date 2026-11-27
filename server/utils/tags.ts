@@ -363,13 +363,13 @@ export function resolveTagIdsForImageTagging(
   return [...new Set(resolved)]
 }
 
-export function assertCanTagImage(key: string, actorUserId: number, isAdmin: boolean): void {
+export function assertCanTagImage(key: string, actorUserId: number, _isAdmin: boolean): void {
   const indexedKey = resolveIndexedImageKey(key)
   if (!indexedKey) {
     throw new Error('IMAGE_NOT_FOUND')
   }
   const ownerId = getImageIndexRow(indexedKey)!.user_id
-  if (!isAdmin && (ownerId === null || ownerId !== actorUserId)) {
+  if (ownerId === null || ownerId !== actorUserId) {
     throw new Error('FORBIDDEN')
   }
 }

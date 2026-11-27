@@ -5,6 +5,7 @@
 .nitro
 .cache
 dist
+dist-windows
 
 # Node dependencies
 node_modules
@@ -37,9 +38,9 @@ data
 # 本地 Git hooks 模板（仅安装在 .git/hooks/，不进仓库）
 git-hooks/
 
-# 本地维护脚本（assign-image-owner、fpk 打包等，不进仓库）
-scripts/
+# 打包输出目录
 dist-fpk/
+dist-docker/
 
 # VitePress docs site
 docs-site/.vitepress/cache

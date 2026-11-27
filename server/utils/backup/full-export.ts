@@ -3,12 +3,13 @@ import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import * as tar from 'tar'
 import { getImageTotals, listAllImageIndexRows } from '../image-index'
+import type { ImageIndexRow } from '../image-index'
 import {
   listStorageBackendRows
 } from '../storage-backends'
 import { parseS3Config } from '../storage/s3'
 import { parseTelegramConfig } from '../storage/telegram'
-import { createImageStream } from '../storage'
+import { getBackendForKey } from '../storage/resolver'
 import { copyDatabaseSnapshot } from './db-snapshot'
 import { markJobDone, markJobFailed, updateBackupJob } from './jobs'
 import { BACKUP_FORMAT_VERSION, type BackupManifest, type StorageBackendMetaExport } from './manifest'
@@ -18,6 +19,7 @@ import {
   getBackupsDir
 } from './paths'
 import type { StorageBackendRow } from '../storage/types'
+import { collectMediaAssetKeys } from '../media-assets'
 
 function formatArchiveName(jobId: string): string {
   return `pichost-${jobId}${BACKUP_ARCHIVE_EXT}`
@@ -45,6 +47,20 @@ function buildStorageBackendsMeta(): StorageBackendMetaExport[] {
 async function writeStreamToFile(stream: NodeJS.ReadableStream, filePath: string): Promise<void> {
   await fs.mkdir(join(filePath, '..'), { recursive: true })
   await pipeline(stream, createWriteStream(filePath))
+}
+
+async function exportMediaAssets(
+  row: ImageIndexRow,
+  stagingRoot: string
+): Promise<void> {
+  const backend = await getBackendForKey(row.key)
+  const keys = await collectMediaAssetKeys(row, backend)
+  for (const key of keys) {
+    await writeStreamToFile(
+      await backend.createStream(key),
+      join(stagingRoot, 'blobs', key)
+    )
+  }
 }
 
 export async function runFullExportJob(jobId: string, appVersion: string): Promise<void> {
@@ -102,12 +118,10 @@ export async function runFullExportJob(jobId: string, appVersion: string): Promi
     for (const row of rows) {
       updateBackupJob(jobId, {
         progress: processed,
-        message: `正在导出图片 ${processed}/${totals.count + 1}…`
+        message: `正在导出文件 ${processed}/${totals.count + 1}…`
       })
 
-      const blobPath = join(stagingRoot, 'blobs', row.key)
-      const stream = await createImageStream(row.key)
-      await writeStreamToFile(stream, blobPath)
+      await exportMediaAssets(row, stagingRoot)
       processed += 1
       updateBackupJob(jobId, { progress: processed })
     }

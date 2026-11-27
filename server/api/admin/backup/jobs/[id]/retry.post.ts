@@ -5,13 +5,13 @@ import { serializeBackupJob } from '../../../../../utils/backup/api'
 import { getBackupJob } from '../../../../../utils/backup/jobs'
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id) {
     createApiError(event, 'INVALID_REQUEST', '缺少任务 ID', 400)
   }
 
-  const job = getBackupJob(id)
+  const job = getBackupJob(id, user.id)
   if (!job || job.type !== 'backend_sync') {
     createApiError(event, 'INVALID_REQUEST', '任务不存在', 404)
   }
@@ -23,6 +23,6 @@ export default defineEventHandler(async (event) => {
     createApiError(event, 'INVALID_REQUEST', message, 400)
   }
 
-  const updated = getBackupJob(id)
+  const updated = getBackupJob(id, user.id)
   return { job: updated ? serializeBackupJob(updated) : null }
 })

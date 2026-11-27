@@ -4,7 +4,7 @@ import { getCurrentUser } from '../../utils/auth'
 import { createApiError } from '../../utils/api-error'
 import { MAX_DELETE_BATCH } from '../../utils/constants'
 import { getImageIndexRow } from '../../utils/image-index'
-import { toCanonicalImageKey, validateImageKey } from '../../utils/image-key'
+import { toCanonicalImageKey, validateStorageKey } from '../../utils/image-key'
 import {
   addTagsToImage,
   removeTagFromImage
@@ -20,7 +20,7 @@ interface BatchTagsBody {
 function validateKeys(keys: string[]): void {
   for (const key of keys) {
     if (
-      !validateImageKey(key)
+      !validateStorageKey(key)
       && !toCanonicalImageKey(key)
       && !getImageIndexRow(key)
     ) {
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
   const action = body?.action === 'remove' ? 'remove' : 'add'
 
   if (!keys.length) {
-    createApiError(event, 'INVALID_REQUEST', '请提供图片列表', 400)
+    createApiError(event, 'INVALID_REQUEST', '请提供媒体列表', 400)
   }
   if (!tagIds.length) {
     createApiError(event, 'INVALID_REQUEST', '请提供标签列表', 400)
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     createApiError(
       event,
       'INVALID_REQUEST',
-      `每次最多处理 ${MAX_DELETE_BATCH} 张图片`,
+      `每次最多处理 ${MAX_DELETE_BATCH} 个媒体`,
       400
     )
   }
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
     validateKeys(keys)
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('INVALID_KEY:')) {
-      createApiError(event, 'INVALID_IMAGE_KEY', `无效的图片路径: ${error.message.slice(12)}`, 400)
+      createApiError(event, 'INVALID_IMAGE_KEY', `无效的媒体路径: ${error.message.slice(12)}`, 400)
     }
     throw error
   }
@@ -87,10 +87,10 @@ export default defineEventHandler(async (event) => {
 
   logActivity(event, {
     action: 'tags',
-    key: 'images/batch-tags',
+    key: 'media/batch-tags',
     originalName: action === 'add'
-      ? `批量打标（${keys.length} 张）`
-      : `批量移除标签（${keys.length} 张）`,
+      ? `批量打标（${keys.length} 个媒体）`
+      : `批量移除标签（${keys.length} 个媒体）`,
     userId: user.id
   })
 

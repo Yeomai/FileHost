@@ -2,9 +2,24 @@
 import uploadCardBg from '~/assets/image/upload-card-bg.webp'
 import uploadCardHero from '~/assets/image/upload-card-hero.webp'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   disabled?: boolean
-}>()
+  title?: string
+  hint?: string
+  formats?: string
+  accept?: string
+  heroImage?: string
+  backgroundImage?: string
+  showSettings?: boolean
+  pasteEnabled?: boolean
+  /** 拖拽/选择时的类型限制；图片页与视频页各自限定，文件页放开 */
+  mediaKind?: 'image' | 'video' | 'any'
+}>(), {
+  accept: 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/x-icon,.svg,.ico',
+  showSettings: true,
+  pasteEnabled: true,
+  mediaKind: 'image'
+})
 
 const emit = defineEmits<{
   'upload': [files: File[]]
@@ -18,8 +33,21 @@ const { t } = useI18n()
 const { bindPaste } = useClipboardImage(ref(null))
 
 bindPaste((files) => {
-  if (!props.disabled) emit('upload', files)
+  if (props.disabled || !props.pasteEnabled) return
+  emit('upload', files)
 })
+
+const heroSource = computed(() => props.heroImage ?? uploadCardHero)
+const backgroundSource = computed(() => props.backgroundImage ?? uploadCardBg)
+const titleText = computed(() => props.title ?? t('upload.title'))
+const hintText = computed(() => props.hint ?? t('upload.hint', { ctrl: 'Ctrl', v: 'V' }))
+const formatsText = computed(() => props.formats ?? t('upload.formats'))
+
+function matchesMediaKind(file: File): boolean {
+  if (props.mediaKind === 'any') return true
+  if (!file.type) return true
+  return file.type.startsWith(`${props.mediaKind}/`)
+}
 
 function openFilePicker() {
   if (props.disabled) return
@@ -38,8 +66,7 @@ function onDrop(event: DragEvent) {
   dragging.value = false
   if (props.disabled) return
 
-  const files = Array.from(event.dataTransfer?.files ?? [])
-    .filter(file => file.type.startsWith('image/'))
+  const files = Array.from(event.dataTransfer?.files ?? []).filter(matchesMediaKind)
   if (files.length) emit('upload', files)
 }
 
@@ -83,7 +110,7 @@ function onKeydown(event: KeyboardEvent) {
     <input
       ref="fileInput"
       type="file"
-      accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/x-icon,.svg,.ico"
+      :accept="accept"
       multiple
       class="hidden"
       :disabled="disabled"
@@ -91,7 +118,7 @@ function onKeydown(event: KeyboardEvent) {
     >
 
     <img
-      :src="uploadCardBg"
+      :src="backgroundSource"
       alt=""
       aria-hidden="true"
       class="pointer-events-none absolute inset-0 size-full object-cover opacity-100 dark:opacity-[0.12]"
@@ -99,7 +126,10 @@ function onKeydown(event: KeyboardEvent) {
       draggable="false"
     >
 
-    <div class="absolute top-3 right-3 z-20">
+    <div
+      v-if="showSettings"
+      class="absolute top-3 right-3 z-20"
+    >
       <button
         type="button"
         class="upload-settings-btn inline-flex size-8 items-center justify-center rounded-md bg-default/70 text-muted backdrop-blur-sm transition-colors hover:bg-elevated hover:text-highlighted disabled:pointer-events-none disabled:opacity-40"
@@ -117,7 +147,7 @@ function onKeydown(event: KeyboardEvent) {
     <div class="relative z-10 mx-auto flex max-w-lg flex-col items-center">
       <div class="flex flex-col items-center">
         <img
-          :src="uploadCardHero"
+          :src="heroSource"
           alt=""
           aria-hidden="true"
           class="h-24 w-auto -mb-3 select-none transition-transform duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] sm:-mb-4 sm:h-28 md:h-32"
@@ -128,16 +158,16 @@ function onKeydown(event: KeyboardEvent) {
 
         <div class="space-y-2">
           <p class="text-xl font-semibold tracking-tight text-highlighted sm:text-2xl">
-            {{ t('upload.title') }}
+            {{ titleText }}
           </p>
           <p class="text-sm text-muted sm:text-base">
-            {{ t('upload.hint', { ctrl: 'Ctrl', v: 'V' }) }}
+            {{ hintText }}
           </p>
         </div>
       </div>
 
       <p class="mt-4 max-w-md text-xs leading-relaxed text-dimmed sm:text-sm">
-        {{ t('upload.formats') }}
+        {{ formatsText }}
       </p>
     </div>
   </div>

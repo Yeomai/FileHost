@@ -143,11 +143,19 @@ export function useAuth() {
     credentials: { username: string, password: string }
       | { secret: string },
     verification: LoginVerificationPayload
-  ): Promise<{ ok: boolean, needsMigration?: boolean, error?: string }> {
+  ): Promise<{
+    ok: boolean
+    needsMigration?: boolean
+    needsPasswordReset?: boolean
+    resetUsername?: string
+    error?: string
+  }> {
     try {
       const result = await $fetch<{
         success: boolean
         needsMigration?: boolean
+        requiresPasswordReset?: boolean
+        username?: string
         user?: AuthUser
       }>('/api/auth/login', {
         method: 'POST',
@@ -159,6 +167,13 @@ export function useAuth() {
       })
       if (result.needsMigration) {
         return { ok: true, needsMigration: true }
+      }
+      if (result.requiresPasswordReset) {
+        return {
+          ok: false,
+          needsPasswordReset: true,
+          resetUsername: result.username
+        }
       }
       if (result.user) {
         user.value = result.user
@@ -218,6 +233,8 @@ export function useAuth() {
     domainSeparation?: boolean
     siteBaseUrl?: string
     imageBaseUrl?: string
+    videoBaseUrl?: string
+    fileBaseUrl?: string
   }): Promise<AuthActionResult> {
     const validationError = validateAuthInput(input.username, input.password)
     if (validationError) {
@@ -236,7 +253,9 @@ export function useAuth() {
             allowRegistration: input.allowRegistration,
             domainSeparation: input.domainSeparation,
             siteBaseUrl: input.siteBaseUrl,
-            imageBaseUrl: input.imageBaseUrl
+            imageBaseUrl: input.imageBaseUrl,
+            videoBaseUrl: input.videoBaseUrl,
+            fileBaseUrl: input.fileBaseUrl
           }
         }
       )

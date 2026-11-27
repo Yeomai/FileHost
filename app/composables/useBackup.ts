@@ -3,7 +3,8 @@ import type {
   BackupJobItem,
   BackupPackageItem,
   BackupRestorePreview,
-  BackendSyncPreview
+  BackendSyncPreview,
+  SiteSyncRequest
 } from '~/types/backup'
 
 const jobs = ref<BackupJobItem[]>([])
@@ -12,6 +13,7 @@ const jobsPageSize = ref(10)
 const jobsTotal = ref(0)
 const jobsTotalPages = ref(1)
 const jobsLoading = ref(false)
+const showHiddenJobs = ref(false)
 const activeJobState = ref<BackupJobItem | null>(null)
 const estimate = ref<BackupEstimate | null>(null)
 const packages = ref<BackupPackageItem[]>([])
@@ -68,7 +70,8 @@ export function useBackup() {
         credentials: 'include',
         query: {
           pageNum: jobsPage.value,
-          pageSize: jobsPageSize.value
+          pageSize: jobsPageSize.value,
+          includeHidden: showHiddenJobs.value
         }
       })
       jobs.value = data.jobs
@@ -101,6 +104,58 @@ export function useBackup() {
   async function refreshJobsFirstPage() {
     jobsPage.value = 1
     return loadJobs()
+  }
+
+  async function toggleShowHiddenJobs() {
+    showHiddenJobs.value = !showHiddenJobs.value
+    jobsPage.value = 1
+    await loadJobs()
+  }
+
+  async function hideJob(jobId: string, hidden = true) {
+    try {
+      await $fetch('/api/admin/backup/jobs/hide', {
+        method: 'POST',
+        credentials: 'include',
+        body: { jobId, hidden }
+      })
+      if (hidden) {
+        showHiddenJobs.value = false
+        jobsPage.value = 1
+      }
+      await loadJobs()
+      toast.add({
+        title: hidden
+          ? t('storage.backup.jobHidden')
+          : t('storage.backup.jobUnhidden'),
+        color: 'success'
+      })
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.hideFailed'))
+    }
+  }
+
+  async function hideAllJobs(hidden = true) {
+    try {
+      await $fetch('/api/admin/backup/jobs/hide-all', {
+        method: 'POST',
+        credentials: 'include',
+        body: { hidden }
+      })
+      if (hidden) {
+        showHiddenJobs.value = false
+      }
+      jobsPage.value = 1
+      await loadJobs()
+      toast.add({
+        title: hidden
+          ? t('storage.backup.jobsHiddenAll')
+          : t('storage.backup.jobsUnhiddenAll'),
+        color: 'success'
+      })
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.hideFailed'))
+    }
   }
 
   async function loadEstimate() {
@@ -149,12 +204,17 @@ export function useBackup() {
     archiveName?: string
   }): Promise<BackupRestorePreview> {
     if (input.file) {
-      const form = new FormData()
-      form.append('file', input.file)
-      form.append('dryRun', 'true')
       const data = await $fetch<{ preview: BackupRestorePreview }>(
         '/api/admin/backup/restore',
-        { method: 'POST', credentials: 'include', body: form }
+        {
+          method: 'POST',
+          credentials: 'include',
+          body: input.file,
+          headers: {
+            'content-type': 'application/octet-stream',
+            'x-pichost-dry-run': 'true'
+          }
+        }
       )
       return data.preview
     }
@@ -180,12 +240,18 @@ export function useBackup() {
   }) {
     try {
       if (input.file) {
-        const form = new FormData()
-        form.append('file', input.file)
-        form.append('conflictMode', input.conflictMode)
         const data = await $fetch<{ job: BackupJobItem }>(
           '/api/admin/backup/restore',
-          { method: 'POST', credentials: 'include', body: form }
+          {
+            method: 'POST',
+            credentials: 'include',
+            body: input.file,
+            headers: {
+              'content-type': 'application/octet-stream',
+              'x-pichost-dry-run': 'false',
+              'x-pichost-conflict-mode': input.conflictMode
+            }
+          }
         )
         await refreshJobsFirstPage()
         startPolling()
@@ -255,6 +321,37 @@ export function useBackup() {
     }
   }
 
+  async function startSiteSync(body: SiteSyncRequest) {
+    try {
+      const data = await $fetch<{ job: BackupJobItem }>(
+        '/api/admin/site-sync',
+        {
+          method: 'POST',
+          credentials: 'include',
+          body
+        }
+      )
+      await refreshJobsFirstPage()
+      startPolling()
+      const cleanupPending = Boolean(
+        body.abandonJobId
+        && data.job.payload.cleanupPending === true
+      )
+      toast.add({
+        title: cleanupPending
+          ? t('storage.backup.siteSyncAbandonedPendingCleanup')
+          : body.abandonJobId
+            ? t('storage.backup.siteSyncAbandoned')
+            : t('storage.backup.siteSyncStarted'),
+        color: cleanupPending ? 'warning' : 'success'
+      })
+      return data.job
+    } catch (error: unknown) {
+      handleError(error, t('storage.backup.siteSyncFailed'))
+      throw error
+    }
+  }
+
   async function retryJob(jobId: string) {
     try {
       await $fetch(`/api/admin/backup/jobs/${jobId}/retry`, {
@@ -295,6 +392,7 @@ export function useBackup() {
     jobsTotal,
     jobsTotalPages,
     jobsLoading,
+    showHiddenJobs,
     estimate,
     packages,
     loadingEstimate,
@@ -302,6 +400,9 @@ export function useBackup() {
     hasActiveJob,
     getActiveJob,
     loadJobs,
+    toggleShowHiddenJobs,
+    hideJob,
+    hideAllJobs,
     setJobsPage,
     setJobsPageSize,
     loadEstimate,
@@ -312,6 +413,7 @@ export function useBackup() {
     confirmRestore,
     previewSync,
     startSync,
+    startSiteSync,
     retryJob,
     cancelJob,
     downloadUrl

@@ -3,16 +3,19 @@ import { createApiError } from '../../../utils/api-error'
 import { serializeBackupJob } from '../../../utils/backup/api'
 import { getBackupExportEstimate } from '../../../utils/backup/stats'
 import { startFullExportJob } from '../../../utils/backup/runner'
+import { resolveRuntimeAppVersion } from '../../../utils/app-version'
 
 export default defineEventHandler(async (event) => {
-  await requireAdminAuth(event)
+  const user = await requireAdminAuth(event)
   const config = useRuntimeConfig(event)
-  const appVersion = String(config.appVersion ?? '0.0.0')
+  const appVersion = resolveRuntimeAppVersion(
+    String(config.appVersion ?? '0.0.0')
+  )
 
   const estimate = await getBackupExportEstimate()
 
   try {
-    const job = startFullExportJob(appVersion)
+    const job = startFullExportJob(appVersion, user.id)
     return {
       job: serializeBackupJob(job),
       estimate

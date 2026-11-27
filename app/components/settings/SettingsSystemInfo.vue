@@ -7,7 +7,8 @@ defineProps<{
   checking: boolean
 }>()
 
-const emit = defineEmits<{
+// 「检查更新」已停用（改动较大，与上游版本号已不对应），暂时保留事件定义
+defineEmits<{
   checkUpdate: []
 }>()
 
@@ -28,6 +29,7 @@ const { t } = useI18n()
       <span class="text-sm font-medium tabular-nums text-highlighted">
         v{{ appVersion }}
       </span>
+      <!-- 检查更新功能已停用，需要时恢复下面这段
       <UBadge
         v-if="updateAvailable && latestVersion"
         color="warning"
@@ -63,6 +65,7 @@ const { t } = useI18n()
       >
         {{ t('settings.viewReleases') }}
       </a>
+      -->
     </div>
   </div>
 </template>

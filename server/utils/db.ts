@@ -191,6 +191,9 @@ function migrateSchema(database: DatabaseSync): void {
       WHERE auto_delete_days > 0 AND auto_delete_enabled_at IS NULL
     `)
   }
+  if (!userColumns.some(column => column.name === 'disabled_at')) {
+    database.exec('ALTER TABLE users ADD COLUMN disabled_at TEXT')
+  }
 
   const daysRow = database.prepare(`
     SELECT value FROM settings WHERE key = 'auto_delete_days'
@@ -263,7 +266,7 @@ function migrateSchema(database: DatabaseSync): void {
   `)
 }
 
-const USER_COLUMNS = 'id, username, password_hash, role, created_at, api_token, auto_delete_days, auto_delete_enabled_at'
+const USER_COLUMNS = 'id, username, password_hash, role, created_at, api_token, auto_delete_days, auto_delete_enabled_at, disabled_at'
 
 export type UserRole = 'admin' | 'user'
 
@@ -276,6 +279,7 @@ export interface UserRow {
   api_token: string | null
   auto_delete_days: number
   auto_delete_enabled_at: string | null
+  disabled_at: string | null
 }
 
 export interface AutoDeletePolicy {
@@ -330,7 +334,7 @@ export function findUserByApiToken(token: string): UserRow | null {
   const row = getDb().prepare(`
     SELECT ${USER_COLUMNS}
     FROM users
-    WHERE api_token = ?
+    WHERE api_token = ? AND disabled_at IS NULL
   `).get(token) as UserRow | undefined
   return row ?? null
 }
@@ -439,6 +443,115 @@ export function updateUserPassword(userId: number, passwordHash: string): void {
   `).run(passwordHash, userId)
 }
 
+/** 懒迁移：users 表新增「需重置密码」标记 */
+function ensurePasswordResetColumn(): void {
+  const columns = getDb().prepare('PRAGMA table_info(users)').all() as Array<{
+    name: string
+  }>
+  if (!columns.some(column => column.name === 'password_reset')) {
+    getDb().exec(`
+      ALTER TABLE users ADD COLUMN password_reset INTEGER NOT NULL DEFAULT 0
+    `)
+  }
+}
+
+export interface AdminUserRow {
+  id: number
+  username: string
+  role: UserRole
+  created_at: string
+  password_reset: number
+  disabled_at: string | null
+}
+
+export interface AdminUserUsage {
+  imageBytes: number
+  videoBytes: number
+  fileBytes: number
+}
+
+/** 管理员用户列表 */
+export function listAdminUsers(): AdminUserRow[] {
+  ensurePasswordResetColumn()
+  return getDb().prepare(`
+    SELECT id, username, role, created_at, password_reset, disabled_at
+    FROM users ORDER BY id ASC
+  `).all() as unknown as AdminUserRow[]
+}
+
+/** 管理员用户列表，附带图片、视频、文件占用 */
+export function listAdminUsersWithUsage(): Array<AdminUserRow & { usage: AdminUserUsage }> {
+  const usage = new Map<number, AdminUserUsage>()
+  const rows = getDb().prepare(`
+    SELECT user_id, media_type, COALESCE(SUM(size), 0) AS bytes
+    FROM images
+    WHERE user_id IS NOT NULL
+    GROUP BY user_id, media_type
+  `).all() as Array<{ user_id: number, media_type: string, bytes: number }>
+
+  for (const row of rows) {
+    const entry = usage.get(row.user_id) ?? {
+      imageBytes: 0,
+      videoBytes: 0,
+      fileBytes: 0
+    }
+    if (row.media_type === 'video') {
+      entry.videoBytes = Number(row.bytes)
+    } else if (row.media_type === 'file') {
+      entry.fileBytes = Number(row.bytes)
+    } else {
+      entry.imageBytes = Number(row.bytes)
+    }
+    usage.set(row.user_id, entry)
+  }
+
+  return listAdminUsers().map(user => ({
+    ...user,
+    usage: usage.get(user.id) ?? {
+      imageBytes: 0,
+      videoBytes: 0,
+      fileBytes: 0
+    }
+  }))
+}
+
+/** 清空密码并标记需要重置 */
+export function clearUserPassword(userId: number): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users SET password_hash = '', password_reset = 1 WHERE id = ?
+  `).run(userId)
+}
+
+/** 设置新密码并解除重置标记 */
+export function setUserPassword(userId: number, passwordHash: string): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users SET password_hash = ?, password_reset = 0 WHERE id = ?
+  `).run(passwordHash, userId)
+}
+
+export function setUserDisabled(userId: number, disabled: boolean): void {
+  ensurePasswordResetColumn()
+  getDb().prepare(`
+    UPDATE users
+    SET disabled_at = ?
+    WHERE id = ?
+  `).run(disabled ? new Date().toISOString() : null, userId)
+  if (disabled) deleteSessionsForUser(userId)
+}
+
+export function updateUsername(userId: number, username: string): void {
+  getDb().prepare('UPDATE users SET username = ? WHERE id = ?').run(username, userId)
+}
+
+export function isPasswordResetRequired(userId: number): boolean {
+  ensurePasswordResetColumn()
+  const row = getDb().prepare('SELECT password_reset FROM users WHERE id = ?')
+    .get(userId) as { password_reset?: number } | undefined
+  return Number(row?.password_reset ?? 0) === 1
+}
+
 export function ensureUserApiToken(userId: number): string {
   const existing = getUserApiToken(userId)
   if (existing) return existing
@@ -500,10 +613,21 @@ export function deleteSessionsForUser(userId: number): void {
 export const SETTINGS_API_UPLOAD_TOKEN = 'api_upload_token'
 export const SETTINGS_WEBP_QUALITY = 'webp_quality'
 export const SETTINGS_ALLOWED_REFERER_HOSTS = 'allowed_referer_hosts'
+export const SETTINGS_FILE_BED_ACCESS = 'file_bed_access'
+export const SETTINGS_TRANSCODE_CONCURRENCY = 'transcode_concurrency'
+export const SETTINGS_TRANSCODE_THREADS = 'transcode_threads'
+export const SETTINGS_TRANSCODE_PRESET = 'transcode_preset'
+export const SETTINGS_TRANSCODE_BITRATE = 'transcode_bitrate_percent'
 export const SETTINGS_HIDE_FOLDER_IN_URL = 'hide_folder_in_url'
 export const SETTINGS_STORAGE_USE_DATE_PATH = 'storage_use_date_path'
 export const SETTINGS_SITE_BASE_URL = 'site_base_url'
 export const SETTINGS_IMAGE_BASE_URL = 'image_base_url'
+export const SETTINGS_VIDEO_BASE_URL = 'video_base_url'
+export const SETTINGS_FILE_BASE_URL = 'file_base_url'
+export const SETTINGS_DOMAIN_SEPARATION = 'domain_separation_enabled'
+export const SETTINGS_IMAGE_DOMAIN_SEPARATED = 'image_domain_separated'
+export const SETTINGS_VIDEO_DOMAIN_SEPARATED = 'video_domain_separated'
+export const SETTINGS_FILE_DOMAIN_SEPARATED = 'file_domain_separated'
 export const SETTINGS_AUTO_DELETE_DAYS = 'auto_delete_days'
 export const SETTINGS_AUTO_DELETE_ENABLED_AT = 'auto_delete_enabled_at'
 export const SETTINGS_ALLOW_REGISTRATION = 'allow_registration'

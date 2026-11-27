@@ -7,7 +7,7 @@ import {
   S3Client
 } from '@aws-sdk/client-s3'
 import type { Readable } from 'node:stream'
-import { validateImageKey } from '../image-key'
+import { validateStorageKey } from '../image-key'
 import type {
   S3BackendConfig,
   S3BackendSecrets,
@@ -35,6 +35,15 @@ function contentTypeFromKey(key: string): string {
       return 'image/x-icon'
     default:
       return 'application/octet-stream'
+  }
+}
+
+function decodeMetadata(value: string | undefined): string | undefined {
+  if (!value) return value
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
   }
 }
 
@@ -125,7 +134,8 @@ export class S3StorageBackend implements StorageBackend {
       Body: bytes,
       ContentType: meta.contentType,
       Metadata: {
-        originalName: meta.originalName,
+        // S3 metadata headers must be ASCII-safe.
+        originalName: encodeURIComponent(meta.originalName),
         uploadedAt: meta.uploadedAt,
         userId: meta.userId != null ? String(meta.userId) : ''
       }
@@ -133,7 +143,7 @@ export class S3StorageBackend implements StorageBackend {
   }
 
   async head(key: string): Promise<StoredImage | null> {
-    if (!validateImageKey(key)) return null
+    if (!validateStorageKey(key)) return null
 
     try {
       const response = await this.client.send(new HeadObjectCommand({
@@ -144,7 +154,7 @@ export class S3StorageBackend implements StorageBackend {
       const uploadedAt = response.Metadata?.uploadedat
         ?? response.LastModified?.toISOString()
         ?? new Date().toISOString()
-      const originalName = response.Metadata?.originalname
+      const originalName = decodeMetadata(response.Metadata?.originalname)
         ?? key.split('/').pop()
         ?? 'image'
       const userIdRaw = response.Metadata?.userid

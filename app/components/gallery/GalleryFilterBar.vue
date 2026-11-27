@@ -14,11 +14,13 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   showBatchDelete?: boolean
   showBatchTags?: boolean
+  showBatchSync?: boolean
 }>(), {
   selectedCount: 0,
   loading: false,
   showBatchDelete: true,
   showBatchTags: false,
+  showBatchSync: false,
   tagIds: () => [],
   tags: () => [],
   tagMode: 'or',
@@ -37,6 +39,7 @@ const emit = defineEmits<{
   'reset': []
   'batch-delete': []
   'batch-tags': []
+  'batch-sync': []
   'manage-tags': []
 }>()
 
@@ -153,6 +156,20 @@ function viewButtonClass(active: boolean) {
       @click="emit('batch-delete')"
     >
       {{ t('stats.batchDelete') }}
+    </UButton>
+
+    <UButton
+      v-if="showBatchSync"
+      type="button"
+      icon="i-lucide-cloud-upload"
+      size="sm"
+      variant="outline"
+      color="neutral"
+      class="shrink-0"
+      :disabled="!selectedCount || loading"
+      @click="emit('batch-sync')"
+    >
+      {{ t('storage.backup.syncSelectedAction') }}
     </UButton>
 
     <div

@@ -1,12 +1,14 @@
+import { randomUUID } from 'node:crypto'
 import { createReadStream, promises as fs } from 'node:fs'
 import type { ReadStream } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { contentTypeFromKey } from '../content-type'
 import { getDataDir } from '../data-dir'
-import { validateImageKey } from '../image-key'
+import { validateStorageKey } from '../image-key'
 import type { StoredImage, StoredImageMeta, StorageBackend } from './types'
 
 const META_SUFFIX = '.meta.json'
+const ATOMIC_TEMP_DIR = '.pichost-tmp'
 
 function keyToFilePath(key: string): string {
   return join(getDataDir(), ...key.split('/'))
@@ -39,12 +41,40 @@ export class LocalStorageBackend implements StorageBackend {
 
   async put(key: string, bytes: Uint8Array, _meta: StoredImageMeta): Promise<void> {
     const filePath = keyToFilePath(key)
+    const tempDir = join(getDataDir(), ATOMIC_TEMP_DIR)
+    const tempPath = join(tempDir, `${randomUUID()}.part`)
+    await fs.mkdir(tempDir, { recursive: true })
     await fs.mkdir(dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, bytes)
+
+    const handle = await fs.open(tempPath, 'w')
+    try {
+      await handle.writeFile(bytes)
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+
+    try {
+      await fs.rename(tempPath, filePath)
+    } catch (error) {
+      await fs.rm(tempPath, { force: true }).catch(() => {})
+      throw error
+    }
+
+    try {
+      const directory = await fs.open(dirname(filePath), 'r')
+      try {
+        await directory.sync()
+      } finally {
+        await directory.close()
+      }
+    } catch {
+      // The rename already completed; directory fsync is best-effort on macOS.
+    }
   }
 
   async head(key: string): Promise<StoredImage | null> {
-    if (!validateImageKey(key)) return null
+    if (!validateStorageKey(key)) return null
 
     let stat
     try {
@@ -91,5 +121,57 @@ export class LocalStorageBackend implements StorageBackend {
 
   async getUsageStats(): Promise<{ count: number, bytes: number }> {
     return { count: 0, bytes: 0 }
+  }
+}
+
+export async function cleanupLocalAtomicTempFiles(
+  maxAgeMs = 60 * 60 * 1000
+): Promise<number> {
+  const tempDir = join(getDataDir(), ATOMIC_TEMP_DIR)
+  let entries
+  try {
+    entries = await fs.readdir(tempDir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+
+  const cutoff = Date.now() - maxAgeMs
+  let removed = 0
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.part')) continue
+    const path = join(tempDir, entry.name)
+    try {
+      const stat = await fs.stat(path)
+      if (stat.mtimeMs > cutoff) continue
+      await fs.rm(path, { force: true })
+      removed++
+    } catch {
+      // A later startup will retry stale temporary files.
+    }
+  }
+  return removed
+}
+
+/** Move an already-complete file into the storage tree without loading it into memory. */
+export async function putLocalFileAtomic(
+  key: string,
+  sourcePath: string
+): Promise<void> {
+  const filePath = keyToFilePath(key)
+  await fs.mkdir(dirname(filePath), { recursive: true })
+  try {
+    await fs.rename(sourcePath, filePath)
+  } catch (error) {
+    if (
+      error
+      && typeof error === 'object'
+      && 'code' in error
+      && error.code === 'EXDEV'
+    ) {
+      await fs.copyFile(sourcePath, filePath)
+      await fs.rm(sourcePath, { force: true })
+      return
+    }
+    throw error
   }
 }

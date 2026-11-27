@@ -3,7 +3,16 @@ import { dirname, join } from 'node:path'
 import { getDb, getUploadSourcesForKeys } from './db'
 import { getDataDir } from './data-dir'
 import { contentTypeFromKey } from './content-type'
-import { DEFAULT_FOLDER, toCanonicalImageKey, validateImageKey } from './image-key'
+import {
+  DEFAULT_FOLDER,
+  FILE_FOLDER,
+  VIDEO_FOLDER,
+  isVideoSidecarKey,
+  mediaTypeForKey,
+  toCanonicalImageKey,
+  validateImageKey,
+  validateStorageKey
+} from './image-key'
 import { buildTagFilterSql, type TagFilterInput } from './tags'
 import { isBareImageFilename, isHiddenImageDatePath } from './image-public-path'
 import {
@@ -11,7 +20,13 @@ import {
   ensureStorageSchema,
   LOCAL_BACKEND_ID
 } from './storage-backends'
-import type { PaginatedResult, StoredImage, StoredImageMeta } from './storage/types'
+import type {
+  MediaType,
+  PaginatedResult,
+  StoredImage,
+  StoredImageMeta,
+  TranscodeStatus
+} from './storage/types'
 
 const META_SUFFIX = '.meta.json'
 
@@ -20,10 +35,20 @@ export interface ImageIndexRow {
   backend_id: string
   user_id: number | null
   folder: string
+  media_type: MediaType
   original_name: string
   content_type: string
   size: number
   uploaded_at: string
+  hls_key: string | null
+  transcode_status: string
+  transcode_progress: number
+  thumb_key: string | null
+  source_deleted: number
+  transcode_preset: string | null
+  transcode_error: string | null
+  transcode_started_at: string | null
+  transcode_duration_ms: number | null
 }
 
 function keyToFilePath(key: string): string {
@@ -49,6 +74,16 @@ function rowToStoredImage(row: ImageIndexRow): StoredImage {
     contentType: row.content_type,
     size: row.size,
     userId: row.user_id,
+    mediaType: row.media_type,
+    hlsKey: row.hls_key ?? null,
+    transcodeStatus: (row.transcode_status ?? 'none') as TranscodeStatus,
+    transcodeProgress: Number(row.transcode_progress ?? 0),
+    thumbKey: row.thumb_key ?? null,
+    sourceDeleted: Number(row.source_deleted ?? 0) === 1,
+    transcodePreset: row.transcode_preset ?? null,
+    transcodeError: row.transcode_error ?? null,
+    transcodeStartedAt: row.transcode_started_at ?? null,
+    transcodeDurationMs: row.transcode_duration_ms ?? null,
     mtimeMs: Number.isFinite(uploadedMs) ? uploadedMs : Date.now()
   }
 }
@@ -70,13 +105,14 @@ export function insertImageIndex(input: {
   contentType: string
   size: number
   uploadedAt: string
+  mediaType?: MediaType
 }): void {
   ensureStorageSchema()
   const folder = input.key.split('/')[0] ?? DEFAULT_FOLDER
   getDb().prepare(`
     INSERT INTO images
-      (key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at, media_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(key) DO UPDATE SET
       backend_id = excluded.backend_id,
       user_id = excluded.user_id,
@@ -84,7 +120,8 @@ export function insertImageIndex(input: {
       original_name = excluded.original_name,
       content_type = excluded.content_type,
       size = excluded.size,
-      uploaded_at = excluded.uploaded_at
+      uploaded_at = excluded.uploaded_at,
+      media_type = excluded.media_type
   `).run(
     input.key,
     input.backendId,
@@ -93,7 +130,8 @@ export function insertImageIndex(input: {
     input.originalName,
     input.contentType,
     input.size,
-    input.uploadedAt
+    input.uploadedAt,
+    input.mediaType ?? 'image'
   )
 }
 
@@ -180,11 +218,13 @@ export async function reconcileLegacyImageKeys(): Promise<{
 export async function purgeOrphanImageIndexRows(): Promise<number> {
   ensureStorageSchema()
   const rows = getDb().prepare(`
-    SELECT key, backend_id FROM images
-  `).all() as Array<{ key: string, backend_id: string }>
+    SELECT key, backend_id, source_deleted FROM images
+  `).all() as Array<{ key: string, backend_id: string, source_deleted: number }>
 
   let removed = 0
   for (const row of rows) {
+    // 转码成功后源文件是主动删除的，索引要保留（播放走 HLS）
+    if (Number(row.source_deleted ?? 0) === 1) continue
     if (row.backend_id !== LOCAL_BACKEND_ID) continue
     if (await fileExistsAtKey(row.key)) continue
     const canonical = toCanonicalImageKey(row.key)
@@ -198,7 +238,7 @@ export async function purgeOrphanImageIndexRows(): Promise<number> {
 export function getImageIndexRow(key: string): ImageIndexRow | null {
   ensureStorageSchema()
   const row = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
     WHERE key = ?
   `).get(key) as ImageIndexRow | undefined
@@ -217,7 +257,7 @@ export function findImageKeyByDatePath(datePath: string): string | null {
   ensureStorageSchema()
   const suffix = `/${datePath}`
   const rows = getDb().prepare(`
-    SELECT key FROM images WHERE key LIKE ?
+    SELECT key FROM images WHERE media_type = 'image' AND key LIKE ?
   `).all(`%${suffix}`) as Array<{ key: string }>
 
   if (rows.length === 0) {
@@ -240,7 +280,7 @@ export function findImageKeyByFilename(filename: string): string | null {
   ensureStorageSchema()
   const suffix = `/${filename}`
   const rows = getDb().prepare(`
-    SELECT key FROM images WHERE key LIKE ?
+    SELECT key FROM images WHERE media_type = 'image' AND key LIKE ?
   `).all(`%${suffix}`) as Array<{ key: string }>
 
   if (rows.length === 0) {
@@ -274,7 +314,7 @@ async function collectImageKeysRecursive(
       } else if (entry.isFile()) {
         if (name.endsWith(META_SUFFIX)) continue
         const key = `${keyPrefix}/${name}`
-        if (validateImageKey(key)) keys.push(key)
+        if (validateStorageKey(key)) keys.push(key)
       }
     }
   } catch {
@@ -284,17 +324,25 @@ async function collectImageKeysRecursive(
   return keys
 }
 
-async function listLocalImageKeys(): Promise<string[]> {
-  const imagesRoot = join(getDataDir(), DEFAULT_FOLDER)
-  return collectImageKeysRecursive(imagesRoot, DEFAULT_FOLDER)
+/** 扫描本地磁盘的 images/、files/ 与 videos/ 目录 */
+async function listLocalStorageKeys(): Promise<string[]> {
+  const keys: string[] = []
+  for (const root of [DEFAULT_FOLDER, FILE_FOLDER, VIDEO_FOLDER]) {
+    const found = await collectImageKeysRecursive(join(getDataDir(), root), root)
+    keys.push(...found)
+  }
+  return keys
 }
 
 export async function migrateLocalImagesToIndex(): Promise<number> {
   ensureDefaultBackends()
-  const keys = await listLocalImageKeys()
+  const keys = await listLocalStorageKeys()
   let inserted = 0
 
   for (const key of keys) {
+    // HLS 播放列表与分片属于视频的附属产物，不进索引
+    if (isVideoSidecarKey(key)) continue
+
     const existing = getImageIndexRow(key)
     if (existing) continue
 
@@ -320,7 +368,8 @@ export async function migrateLocalImagesToIndex(): Promise<number> {
       originalName: meta.originalName ?? key.split('/').pop() ?? 'image',
       contentType,
       size: stat.size,
-      uploadedAt
+      uploadedAt,
+      mediaType: mediaTypeForKey(key) as MediaType
     })
     inserted++
   }
@@ -382,16 +431,40 @@ export function getImageTotals(): { count: number, bytes: number } {
 export function listAllImageIndexRows(): ImageIndexRow[] {
   ensureStorageSchema()
   return getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
     ORDER BY key ASC
   `).all() as unknown as ImageIndexRow[]
 }
 
+export function listImageIndexRowsAfter(
+  afterKey: string,
+  limit: number
+): ImageIndexRow[] {
+  ensureStorageSchema()
+  return getDb().prepare(`
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
+    FROM images
+    WHERE key > ?
+    ORDER BY key ASC
+    LIMIT ?
+  `).all(afterKey, limit) as unknown as ImageIndexRow[]
+}
+
+export function listImageIndexRowsForUser(userId: number): ImageIndexRow[] {
+  ensureStorageSchema()
+  return getDb().prepare(`
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
+    FROM images
+    WHERE user_id = ?
+    ORDER BY key ASC
+  `).all(userId) as unknown as ImageIndexRow[]
+}
+
 export function listImageIndexRowsByBackend(backendId: string): ImageIndexRow[] {
   ensureStorageSchema()
   return getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
     WHERE backend_id = ?
     ORDER BY key ASC
@@ -405,14 +478,173 @@ export function updateImageBackendId(key: string, backendId: string): void {
   `).run(backendId, key)
 }
 
+/** 更新 HLS 转码状态；hlsKey / progress 传 null 时保留原值 */
+export function updateImageTranscode(
+  key: string,
+  input: {
+    status: TranscodeStatus
+    hlsKey?: string | null
+    progress?: number
+    sourceDeleted?: boolean
+    size?: number
+    preset?: string | null
+    error?: string | null
+    startedAt?: string | null
+    durationMs?: number | null
+  }
+): void {
+  ensureStorageSchema()
+  getDb().prepare(`
+    UPDATE images
+    SET transcode_status = ?,
+        hls_key = COALESCE(?, hls_key),
+        transcode_progress = COALESCE(?, transcode_progress),
+        source_deleted = COALESCE(?, source_deleted),
+        size = COALESCE(?, size),
+        transcode_preset = COALESCE(?, transcode_preset),
+        transcode_error = ?,
+        transcode_started_at = COALESCE(?, transcode_started_at)
+        , transcode_duration_ms = COALESCE(?, transcode_duration_ms)
+    WHERE key = ?
+  `).run(
+    input.status,
+    input.hlsKey ?? null,
+    input.progress ?? null,
+    input.sourceDeleted === undefined ? null : (input.sourceDeleted ? 1 : 0),
+    input.size ?? null,
+    input.preset ?? null,
+    input.error ?? null,
+    input.startedAt ?? null,
+    input.durationMs ?? null,
+    key
+  )
+}
+
+/** 启动时恢复被中断的转码任务 */
+export function listPendingTranscodeRows(): Array<{
+  key: string
+  preset: string | null
+}> {
+  ensureStorageSchema()
+  const rows = getDb().prepare(`
+    SELECT key, transcode_preset FROM images
+    WHERE media_type = 'video' AND transcode_status IN ('pending', 'running')
+    ORDER BY uploaded_at ASC
+  `).all() as Array<{ key: string, transcode_preset: string | null }>
+  return rows.map(row => ({ key: row.key, preset: row.transcode_preset }))
+}
+
+/** 转码已完成但仍保留源文件的视频（用于补删历史遗留） */
+export function listTranscodedSourceRows(): Array<{ key: string, hlsKey: string }> {
+  ensureStorageSchema()
+  const rows = getDb().prepare(`
+    SELECT key, hls_key FROM images
+    WHERE media_type = 'video'
+      AND transcode_status = 'done'
+      AND source_deleted = 0
+      AND hls_key IS NOT NULL
+  `).all() as Array<{ key: string, hls_key: string }>
+  return rows.map(row => ({ key: row.key, hlsKey: row.hls_key }))
+}
+
+/** 记录视频封面缩略图 key */
+export function updateImageThumb(key: string, thumbKey: string): void {
+  ensureStorageSchema()
+  getDb().prepare('UPDATE images SET thumb_key = ? WHERE key = ?').run(thumbKey, key)
+}
+
+export interface MediaStats {
+  uploadToday: number
+  uploadYesterday: number
+  uploadMonth: number
+  uploadLastMonth: number
+  uploadTotal: number
+  storedCount: number
+  uploadBytesTotal: number
+  bySource: { web: number, api: number }
+}
+
+/** 按媒体类型统计（图片 / 视频 / 文件各自独立） */
+export function getMediaStats(
+  mediaType: MediaType,
+  userFilter?: number | 'admin'
+): MediaStats {
+  ensureStorageSchema()
+  const params: Array<string | number> = [mediaType]
+  const userSql = buildUserFilterSql(userFilter, params)
+  // 转码中的视频还没入库，与列表口径保持一致：统计不计入
+  const transcodeSql = mediaType === 'video'
+    ? ` AND transcode_status IN ('none', 'done', 'failed')`
+    : ''
+  const rows = getDb().prepare(`
+    SELECT size, uploaded_at FROM images
+    WHERE media_type = ?${transcodeSql}${userSql}
+  `).all(...params) as Array<{ size: number, uploaded_at: string }>
+
+  const startOfDay = startOfDayIsoInShanghai()
+  const startOfYesterday = startOfYesterdayIsoInShanghai()
+  const startOfMonth = startOfMonthIsoInShanghai()
+  const startOfLastMonth = startOfLastMonthIsoInShanghai()
+
+  let bytes = 0
+  let today = 0
+  let yesterday = 0
+  let month = 0
+  let lastMonth = 0
+
+  for (const row of rows) {
+    bytes += row.size
+    if (row.uploaded_at >= startOfDay) today++
+    if (row.uploaded_at >= startOfYesterday && row.uploaded_at < startOfDay) yesterday++
+    if (row.uploaded_at >= startOfMonth) month++
+    if (row.uploaded_at >= startOfLastMonth && row.uploaded_at < startOfMonth) lastMonth++
+  }
+
+  // 来源分布来自上传日志，按目录前缀区分类型
+  const prefix = mediaType === 'video' ? 'videos/' : mediaType === 'file' ? 'files/' : 'images/'
+  const sourceParams: Array<string | number> = [`${prefix}%`]
+  const sourceUserSql = userFilter === undefined || userFilter === 'admin'
+    ? ''
+    : ' AND user_id = ?'
+  if (sourceUserSql) sourceParams.push(userFilter as number)
+  const sourceRows = getDb().prepare(`
+    SELECT source, COUNT(*) AS count FROM activity_logs
+    WHERE action = 'upload' AND key LIKE ?${sourceUserSql}
+    GROUP BY source
+  `).all(...sourceParams) as Array<{ source: string, count: number }>
+
+  const bySource = { web: 0, api: 0 }
+  for (const row of sourceRows) {
+    if (row.source === 'web') bySource.web = row.count
+    else if (row.source === 'api') bySource.api = row.count
+  }
+
+  return {
+    uploadToday: today,
+    uploadYesterday: yesterday,
+    uploadMonth: month,
+    uploadLastMonth: lastMonth,
+    uploadTotal: rows.length,
+    storedCount: rows.length,
+    uploadBytesTotal: bytes,
+    bySource
+  }
+}
+
 export async function countImages(
   userFilter?: number | 'admin',
   backendId?: string,
-  tagFilter?: TagFilterInput
+  tagFilter?: TagFilterInput,
+  mediaType: MediaType | 'all' = 'image'
 ): Promise<number> {
   ensureStorageSchema()
   const params: Array<string | number> = []
   const clauses: string[] = ['1=1']
+
+  if (mediaType !== 'all') {
+    clauses.push('media_type = ?')
+    params.push(mediaType)
+  }
 
   const userSql = buildUserFilterSql(userFilter, params)
   const backendSql = buildBackendFilterSql(backendId, params)
@@ -466,16 +698,27 @@ export async function listImages(options: {
   contentType?: string
   uploadSource?: 'web' | 'api'
   tagFilter?: TagFilterInput
+  mediaType?: MediaType
+  /** 只返回这些转码状态的条目（视频库用来隐藏转码中的视频） */
+  transcodeStatuses?: TranscodeStatus[]
 }): Promise<PaginatedResult<StoredImage>> {
   ensureStorageSchema()
   const params: Array<string | number> = []
   const clauses: string[] = ['1=1']
 
+  clauses.push('media_type = ?')
+  params.push(options.mediaType ?? 'image')
+
+  if (options.transcodeStatuses?.length) {
+    clauses.push(`transcode_status IN (${options.transcodeStatuses.map(() => '?').join(', ')})`)
+    params.push(...options.transcodeStatuses)
+  }
+
   const userSql = buildUserFilterSql(options.userFilter, params)
   const backendSql = buildBackendFilterSql(options.backendId, params)
   const tagSql = buildTagFilterSql(options.tagFilter, params)
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
     WHERE ${clauses.join(' AND ')}${userSql}${backendSql}${tagSql}
     ORDER BY uploaded_at DESC, key DESC
@@ -501,17 +744,27 @@ export async function searchImages(options: {
   contentType?: string
   uploadSource?: 'web' | 'api'
   tagFilter?: TagFilterInput
+  mediaType?: MediaType
+  transcodeStatuses?: TranscodeStatus[]
 }): Promise<PaginatedResult<StoredImage>> {
   ensureStorageSchema()
   const needle = options.query.trim().toLowerCase()
   const params: Array<string | number> = []
   const clauses: string[] = ['1=1']
 
+  clauses.push('media_type = ?')
+  params.push(options.mediaType ?? 'image')
+
+  if (options.transcodeStatuses?.length) {
+    clauses.push(`transcode_status IN (${options.transcodeStatuses.map(() => '?').join(', ')})`)
+    params.push(...options.transcodeStatuses)
+  }
+
   const userSql = buildUserFilterSql(options.userFilter, params)
   const backendSql = buildBackendFilterSql(options.backendId, params)
   const tagSql = buildTagFilterSql(options.tagFilter, params)
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
     WHERE ${clauses.join(' AND ')}${userSql}${backendSql}${tagSql}
     ORDER BY uploaded_at DESC, key DESC
@@ -645,8 +898,9 @@ export async function getUserScopedStorageStats(
 export async function listImageKeysForAutoDelete(): Promise<StoredImage[]> {
   ensureStorageSchema()
   const rows = getDb().prepare(`
-    SELECT key, backend_id, user_id, folder, original_name, content_type, size, uploaded_at
+    SELECT key, backend_id, user_id, folder, media_type, original_name, content_type, size, uploaded_at, hls_key, transcode_status, transcode_progress, thumb_key, source_deleted, transcode_preset, transcode_started_at, transcode_duration_ms, transcode_error
     FROM images
+    WHERE media_type = 'image'
     ORDER BY uploaded_at ASC
   `).all() as unknown as ImageIndexRow[]
 
