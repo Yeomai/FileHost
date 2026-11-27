@@ -46,7 +46,7 @@
     "docs:preview": "npm run docs:prepare && vitepress preview docs-site",
     "desktop:prepare": "node desktop/prepare-runtime.mjs",
     "desktop:dev": "npm run desktop:prepare && electron .",
-    "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64",
+    "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64 --publish never",
     "pack:docker": "node scripts/build-docker.mjs",
     "pack:fpk": "node scripts/build-fpk.mjs",
     "pack:windows": "npm run desktop:build",
