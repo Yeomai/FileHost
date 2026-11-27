@@ -9,7 +9,7 @@
 <p align="center">Multi-user · WebP compression · HLS video · File hosting · Tags · Multi-backend storage · Full backup and migration</p>
 
 <p align="center">
-  <a href="https://github.com/yeomaiyelove-cpu/PicHost/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/yeomaiyelove-cpu/PicHost?style=flat-square&color=22c55e" alt="version" /></a>
+  <a href="https://github.com/Yeomai/FileHost/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/Yeomai/FileHost?style=flat-square&color=22c55e" alt="version" /></a>
   <img src="https://img.shields.io/badge/Nuxt-4-00DC82?style=flat-square&logo=nuxt.js&logoColor=white" alt="Nuxt 4" />
   <a href="https://hub.docker.com/r/yeomaiyelove/pichost"><img src="https://img.shields.io/badge/Docker-yeomaiyelove%2Fpichost-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" /></a>
   <img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows x64" />
@@ -31,6 +31,8 @@
 ## Overview
 
 PicHost is a media management platform for NAS devices, home servers, and small self-hosted deployments. It manages images, videos, and general-purpose files in one place, with multi-user access, tags, search, multiple storage backends, HLS video processing, full-site backup and restore, backend migration, and site-to-site synchronization.
+
+> This repository is a customized fork maintained at `Yeomai/FileHost`. Features and permission behavior may differ from upstream PicHost. This README describes the current repository.
 
 The first visit opens a web setup wizard. Administrators can either create an account or restore an existing `.phost.tar.gz` backup.
 
@@ -61,6 +63,7 @@ The first visit opens a web setup wizard. Administrators can either create an ac
 ### Images
 
 - Upload by drag and drop, file picker, or `Ctrl+V` paste, with configurable formats, size limits, batch limits, and rate limits.
+- Image, video, and file uploads show real byte progress; large uploads are no longer limited by the old multipart parser's roughly 128 MB ceiling.
 - Server-side Sharp-based WebP compression, with optional original preservation and optional browser-side WebP compression.
 - Search, pagination, storage/source/tag filters, grid or list layouts, detail views, multiple link formats, bulk tagging, and bulk deletion.
 - Media counts and source statistics, Referer hotlink protection, and configurable referrer allowlists.
@@ -80,9 +83,11 @@ The first visit opens a web setup wizard. Administrators can either create an ac
 
 ### Users and Access Control
 
-- Administrator and standard-user accounts; standard users only see and manage their own media.
+- Administrator and standard-user accounts; every account, including administrators, can only see and manage its own media. Administrators can still manage users, storage backends, and system settings.
 - Slider, Cloudflare Turnstile, and Cap verification, with optional public registration.
 - Profile and password management, administrator password reset, and account-system migration.
+- Administrators can disable or re-enable accounts. Disabling revokes existing sessions and blocks password and API-token login while preserving user data.
+- Administrators can delete a standard user and clear that user's current images, videos, files, tags, and sessions. Administrator accounts cannot be disabled or deleted.
 - Per-user tags and automatic deletion policies.
 - Login and upload rate limits, global and personal API tokens, and activity logs.
 
@@ -129,6 +134,12 @@ Docker Hub:
 - `yeomaiyelove/pichost:latest`
 - `yeomaiyelove/pichost:<version>`
 
+To ensure the image contains code from this branch, build it locally:
+
+```bash
+npm run pack:docker
+```
+
 ### Windows
 
 The Windows x64 installer is self-contained:
@@ -137,6 +148,7 @@ The Windows x64 installer is self-contained:
 - The first launch opens the web setup wizard.
 - Data is stored in the `data` directory under the installation directory.
 - Uninstall asks whether to delete the data directory. If preserved, the database, media, and backups remain on disk.
+- The `Build Windows EXE` workflow can be run manually from GitHub Actions. It produces `PicHost-Windows-v<version>` and creates or updates the matching GitHub Release.
 
 ### FnOS
 
@@ -164,6 +176,13 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
+```
+
+macOS start/stop scripts can be run by double-click or from a terminal:
+
+```bash
+./start-dev.command
+./stop-dev.command
 ```
 
 ### Release Artifacts

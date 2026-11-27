@@ -9,7 +9,7 @@
 <p align="center">多用户 · WebP 压缩 · HLS 视频 · 文件床 · 标签 · 多存储后端 · 整站备份与迁移</p>
 
 <p align="center">
-  <a href="https://github.com/yeomaiyelove-cpu/PicHost/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/yeomaiyelove-cpu/PicHost?style=flat-square&color=22c55e" alt="version" /></a>
+  <a href="https://github.com/Yeomai/FileHost/blob/main/package.json"><img src="https://img.shields.io/github/package-json/v/Yeomai/FileHost?style=flat-square&color=22c55e" alt="version" /></a>
   <img src="https://img.shields.io/badge/Nuxt-4-00DC82?style=flat-square&logo=nuxt.js&logoColor=white" alt="Nuxt 4" />
   <a href="https://hub.docker.com/r/yeomaiyelove/pichost"><img src="https://img.shields.io/badge/Docker-yeomaiyelove%2Fpichost-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" /></a>
   <img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows x64" />
@@ -31,6 +31,8 @@
 ## 项目简介
 
 PicHost 是一个面向 NAS、家庭服务器和小型自托管场景的媒体管理平台，可统一管理图片、视频和普通文件。除上传与直链外，还提供多用户、标签、搜索、多存储后端、HLS 视频处理、整站备份恢复、跨后端迁移以及两站点同步。
+
+> 本仓库是 `Yeomai/FileHost` 维护的定制分支，功能和权限行为可能与上游 PicHost 不同。本文档以当前仓库实现为准。
 
 首次启动通过 Web 向导创建管理员，也可以直接从 `.phost.tar.gz` 完整备份恢复。
 
@@ -61,6 +63,7 @@ PicHost 是一个面向 NAS、家庭服务器和小型自托管场景的媒体�
 ### 图片管理
 
 - 支持拖拽、文件选择和 `Ctrl+V` 粘贴上传，可配置格式、大小、批量数量和频率限制。
+- 图片、视频和文件上传均显示真实字节进度；大文件上传不再受旧版 multipart 解析器约 128 MB 的限制。
 - 服务端使用 Sharp 压缩为 WebP，也可保留原图；支持可选的浏览器端 WebP 压缩。
 - 图库支持搜索、分页、存储后端/上传来源/标签筛选，以及网格和列表视图。
 - 支持查看详情、复制多种链接格式、批量打标和批量删除，并提供媒体数量与来源统计。
@@ -81,9 +84,11 @@ PicHost 是一个面向 NAS、家庭服务器和小型自托管场景的媒体�
 
 ### 多用户与权限
 
-- 管理员与普通用户账号体系，普通用户只能查看和管理自己的媒体。
+- 管理员与普通用户账号体系；所有账号（包括管理员）都只能查看和管理自己的媒体。管理员仍可管理用户、存储后端和系统设置。
 - 支持滑块、Cloudflare Turnstile 和 Cap 人机验证，可选择开放注册。
 - 支持修改资料、修改密码、管理员清空密码和迁移到账号密码登录。
+- 管理员可禁用/启用账号；禁用会立即注销现有会话并阻止密码和 API Token 登录，但保留用户数据。
+- 管理员可注销普通用户并清除其当前图片、视频、文件、标签和会话；管理员账号不能禁用或注销。
 - 每个用户拥有独立标签和自动删除策略，可设置媒体保存天数。
 - 提供登录与上传频率限制、全局/个人 API Token 和操作日志。
 
@@ -130,6 +135,12 @@ Docker Hub：
 - `yeomaiyelove/pichost:latest`
 - `yeomaiyelove/pichost:<版本号>`
 
+如需确保镜像包含当前分支的代码，建议在本仓库本地构建：
+
+```bash
+npm run pack:docker
+```
+
 ### Windows
 
 项目提供 Windows x64 一体安装包：
@@ -138,6 +149,7 @@ Docker Hub：
 - 首次启动后按 Web 向导完成设置。
 - 数据保存在安装目录下的 `data` 子目录。
 - 卸载时会询问是否删除数据；选择保留后，数据库、图片、视频和备份不会被删除。
+- GitHub Actions 中可手动运行 `Build Windows EXE`，产物名为 `PicHost-Windows-v<版本号>`，同时会创建或更新对应版本的 GitHub Release。
 
 ### 飞牛 NAS
 
@@ -165,6 +177,13 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
+```
+
+macOS 提供双击或用终端运行的启停脚本：
+
+```bash
+./start-dev.command
+./stop-dev.command
 ```
 
 ### 构建安装产物
